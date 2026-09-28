@@ -1,0 +1,46 @@
+name: CI
+
+# `main` is the plugin's install channel; branch protection requires the `validate` job.
+# No path filters: the required check must report on every pull request.
+# Public repository: GitHub-hosted runners only, no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Marketplace manifest and, through it, each plugin's plugin.json, as Claude Code reads them.
+      - name: Validate plugin and marketplace manifests
+        run: npx --yes @anthropic-ai/claude-code@2.1.283 plugin validate --strict .
+
+      # Each skill the marketplace lists: directory and SKILL.md exist, frontmatter parses and
+      # meets the Agent Skills specification (name matches directory, description present,
+      # no unknown fields).
+      - name: Validate listed skills
+        run: |
+          jq -r '.plugins[] | .source as $src | .skills[] | "\($src)/\(.)"' .claude-plugin/marketplace.json |
+          while read -r skill; do
+            pipx run --spec skills-ref==0.1.1 agentskills validate "$skill"
+          done
+
+      - name: Check relative links
+        run: node .github/scripts/check-links.mjs
+
+      - name: Run test suite
+        run: npm run --if-present test
