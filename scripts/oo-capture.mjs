@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { dateMillis, plusYears, sessions } from './oo-session-calendar.mjs';
 
 const root = path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'tradeblocks', 'oo-captures');
-const sourceKeys = ['savedBacktestId', 'runId'];
+const sourceKeys = ['savedBacktestId', 'runId', 'savedPortfolioId'];
 const sort = { sortBy: 'opened', direction: 'asc', limit: 100 };
 
 function fail(reason, detail) { throw new Error(`${reason}: ${detail}`); }
@@ -39,7 +39,7 @@ async function event(dir, entry) {
   await saveJson(path.join(dir, 'responses', `${randomUUID()}.json`), entry);
 }
 export async function hook(input) {
-  const match = /^mcp__[^_]+(?:_[^_]+)*__(get_trade_log|get_saved_backtest|get_backtest_results|get_equity_curve)$/.exec(input.tool_name || '');
+  const match = /^mcp__[^_]+(?:_[^_]+)*__(get_trade_log|get_saved_backtest|get_saved_portfolio|get_backtest_results|get_equity_curve)$/.exec(input.tool_name || '');
   if (!match || !input.session_id) return null;
   const armed = await marker(input.session_id);
   if (!armed) return null;
@@ -142,7 +142,7 @@ function curveRows(records, sourceKey, sourceId, server, rangeStart, rangeEnd) {
   for (const window of windows) {
     const args = window.toolInput?.parameters;
     if (window.toolName !== `${server}__get_equity_curve` || !args || args[sourceKey] !== sourceId ||
-      sourceKeys.some((key) => key !== sourceKey && args[key] != null) || args.savedPortfolioId != null)
+      sourceKeys.some((key) => key !== sourceKey && args[key] != null))
       fail('CURVE_SOURCE_MISMATCH', 'equity window source or OO server differs from headline');
     const from = args.seriesStart, through = args.seriesEnd;
     if (dateMillis(from) === null || dateMillis(through) === null || from > through)
@@ -194,6 +194,48 @@ function curveRows(records, sourceKey, sourceId, server, rangeStart, rangeEnd) {
   }
   return { lines, summary: { rows: expected.length, rangeStart, rangeEnd, windows: requests.length, requests, maxDrawdownPct: expected.length ? (Math.min(...expected.map((date) => rows.get(date).drawdownPercentage)) / 100).toFixed(2) : null } };
 }
+function portfolioMembers(headline) {
+  const strategies = headline.data.strategies;
+  const results = headline.data.result?.strategyResults;
+  if (!Array.isArray(results)) fail('MISSING_STRATEGY_RESULTS', 'OO portfolio result.strategyResults unavailable');
+  if (!Array.isArray(strategies)) fail('INVALID_PORTFOLIO_MEMBERS', 'OO portfolio strategies unavailable');
+  const members = new Map();
+  for (const member of strategies) {
+    const id = member.savedBacktestId;
+    if (typeof id !== 'string' || !id || members.has(id)) fail('INVALID_PORTFOLIO_MEMBERS', 'each portfolio member needs a distinct savedBacktestId');
+    if (typeof member.name !== 'string' || !member.name.trim()) fail('INVALID_PORTFOLIO_MEMBERS', `member ${id} has no OO name`);
+    // TradeBlocks splits CSV on physical lines before parsing quoted fields.
+    if (/[\r\n]/.test(member.name)) fail('INVALID_STRATEGY', `OO portfolio member ${id} name contains a line break, which TradeBlocks import_csv cannot read`);
+    members.set(id, { savedBacktestId: id, name: member.name, trades: 0, cents: 0 });
+  }
+  if (results.length !== members.size) fail('STRATEGY_RESULTS_MISMATCH', 'strategyResults must contain each portfolio member exactly once');
+  const seenResults = new Set();
+  for (const result of results) {
+    const id = result.savedBacktestId;
+    if (!members.has(id) || seenResults.has(id)) fail('STRATEGY_RESULTS_MISMATCH', `unknown or duplicate strategy result ${id}`);
+    seenResults.add(id);
+    if (!Number.isInteger(result.numberOfTrades) || result.numberOfTrades < 0) fail('INVALID_STRATEGY_RESULT', `member ${id} count unavailable`);
+    const member = members.get(id);
+    member.expectedTrades = result.numberOfTrades;
+    member.expectedCents = money(result.profit, `member ${id} OO profit`);
+  }
+  const labelKey = (value) => value.trim().toLowerCase();
+  const frequencies = new Map();
+  for (const member of members.values()) frequencies.set(labelKey(member.name), (frequencies.get(labelKey(member.name)) ?? 0) + 1);
+  const used = new Set();
+  for (const member of members.values()) if (frequencies.get(labelKey(member.name)) === 1) {
+    member.label = member.name;
+    used.add(labelKey(member.label));
+  }
+  for (const member of members.values()) if (!member.label) {
+    let label = `${member.name.trim()} [${member.savedBacktestId}]`;
+    while (used.has(labelKey(label))) label += ` [${member.savedBacktestId}]`;
+    member.label = label;
+    used.add(labelKey(label));
+  }
+  return members;
+}
+
 export async function verify(id, chosenName) {
   if (chosenName !== undefined && (typeof chosenName !== 'string' || !chosenName.trim())) fail('INVALID_STRATEGY', 'strategy name must be nonblank');
   const dir = capturePath(id);
@@ -204,22 +246,25 @@ export async function verify(id, chosenName) {
   const failure = events.find((entry) => entry.failure);
   if (failure) fail(failure.failure, failure.detail);
   const records = await Promise.all(events.map(async (entry) => ({ ...entry, data: await captureJson(path.join(dir, 'responses', entry.rawFile)) })));
-  const headlines = records.filter((entry) => /__(get_saved_backtest|get_backtest_results)$/.test(entry.toolName));
+  const headlines = records.filter((entry) => /__(get_saved_backtest|get_saved_portfolio|get_backtest_results)$/.test(entry.toolName));
   if (headlines.length !== 1) fail('HEADLINE_COUNT', 'expected exactly one OO headline response');
   const headline = headlines[0];
-  const sourceKey = headline.toolName.endsWith('get_saved_backtest') ? 'savedBacktestId' : 'runId';
+  const sourceKey = headline.toolName.endsWith('get_saved_backtest') ? 'savedBacktestId' :
+    headline.toolName.endsWith('get_saved_portfolio') ? 'savedPortfolioId' : 'runId';
   const sourceId = headline.toolInput?.[sourceKey];
-  if (typeof sourceId !== 'string' || !sourceId || (headline.toolName.endsWith('get_saved_backtest') && headline.data.id !== sourceId)) fail('SOURCE_MISMATCH', 'headline identity does not match recorded call');
+  if (typeof sourceId !== 'string' || !sourceId || sourceKeys.some((key) => key !== sourceKey && headline.toolInput?.[key] != null) ||
+    (sourceKey !== 'runId' && headline.data.id !== sourceId)) fail('SOURCE_MISMATCH', 'headline identity does not match recorded call');
+  if (sourceKey === 'savedPortfolioId' && chosenName !== undefined) fail('PORTFOLIO_STRATEGY_NAME', 'a single chosen name would merge portfolio members; labels come from the saved portfolio snapshot');
   const result = sourceKey === 'runId' ? headline.data : headline.data.result;
   if (!result || !Number.isInteger(result.numberOfTrades) || !Number.isInteger(result.numberOfOpenTrades) || result.numberOfTrades < 0 || result.numberOfOpenTrades < 0) fail('INVALID_HEADLINE', 'OO count/open-at-end figures unavailable');
   const expectedProfit = money(result.profit, 'OO profit');
   // Two OO servers (e.g. production and staging) can reuse an id, so every page must come from the headline's server.
   const server = headline.toolName.slice(0, headline.toolName.lastIndexOf('__'));
-  const rangeStart = headline.data.parameters?.rangeStart;
-  const rangeEnd = headline.data.parameters?.rangeEnd;
+  const rangeStart = sourceKey === 'savedPortfolioId' ? headline.data.settings?.rangeStart : headline.data.parameters?.rangeStart;
+  const rangeEnd = sourceKey === 'savedPortfolioId' ? headline.data.settings?.rangeEnd : headline.data.parameters?.rangeEnd;
   const hasRange = rangeStart != null && rangeEnd != null;
   if (hasRange) sessions(rangeStart, rangeEnd);
-  if (!hasRange && sourceKey === 'savedBacktestId') fail('MISSING_CURVE_RANGE', 'saved backtest has no OO-reported range');
+  if (!hasRange && sourceKey !== 'runId') fail('MISSING_CURVE_RANGE', 'saved source has no OO-reported range');
   if (!hasRange && records.some((entry) => entry.toolName.endsWith('__get_equity_curve')))
     fail('MISSING_CURVE_RANGE', 'OO did not report a source range for these curve windows');
   const pages = records.filter((entry) => entry.toolName.endsWith('__get_trade_log'));
@@ -227,7 +272,7 @@ export async function verify(id, chosenName) {
   if (pages.some((page) => page.toolName !== `${server}__get_trade_log`)) fail('SOURCE_MISMATCH', 'trade-log page from a different OO server than the headline');
   for (const page of pages) {
     const args = page.toolInput || {};
-    if (args[sourceKey] !== sourceId || sourceKeys.some((key) => key !== sourceKey && args[key] != null) || args.savedPortfolioId != null) fail('SOURCE_MISMATCH', 'trade-log page from another source');
+    if (args[sourceKey] !== sourceId || sourceKeys.some((key) => key !== sourceKey && args[key] != null)) fail('SOURCE_MISMATCH', 'trade-log page from another source');
     if (['outcome', 'reasonClosed', 'strategyIds'].some((key) => Object.hasOwn(args, key))) fail('FILTERED_LOG', 'trade-log filter arguments are not permitted');
     if (Object.entries(sort).some(([key, value]) => args[key] !== value)) fail('SORT_MISMATCH', 'limit/sort differs from fixed ascending opening order');
     if (!Number.isInteger(args.offset) || args.offset < 0 || page.data.offset !== args.offset || !Array.isArray(page.data.items) || !Number.isInteger(page.data.totalCount)) fail('INVALID_PAGE', 'offset, count or items malformed');
@@ -250,6 +295,18 @@ export async function verify(id, chosenName) {
   }
   if (offset !== count || pages.at(-1).data.nextOffset != null) fail('INTERRUPTED_CAPTURE', 'last page not terminal');
   const economic = all.filter((item) => item.isIgnored !== true);
+  const members = sourceKey === 'savedPortfolioId' ? portfolioMembers(headline) : null;
+  if (members) for (const trade of economic) {
+    if (typeof trade.strategyId !== 'string' || !trade.strategyId) fail('MISSING_MEMBER_ID', 'economic portfolio trade lacks strategyId');
+    const member = members.get(trade.strategyId);
+    if (!member) fail('UNKNOWN_MEMBER_ID', `strategyId ${trade.strategyId} is not in portfolio snapshot`);
+    member.trades++;
+    member.cents += money(trade.profit, `member ${trade.strategyId} trade profit`);
+  }
+  if (members) for (const member of members.values()) {
+    if (member.trades !== member.expectedTrades) fail('MEMBER_COUNT_MISMATCH', `${member.savedBacktestId}: ${member.trades} trades vs OO ${member.expectedTrades}`);
+    if (member.cents !== member.expectedCents) fail('MEMBER_PROFIT_MISMATCH', `${member.savedBacktestId}: ${member.cents} cents vs OO ${member.expectedCents}`);
+  }
   if (economic.length !== result.numberOfTrades) fail('TRADE_COUNT_MISMATCH', `${economic.length} economic rows vs OO ${result.numberOfTrades}`);
   const profit = economic.reduce((sum, trade) => sum + money(trade.profit, 'trade profit'), 0);
   if (profit !== expectedProfit) fail('PROFIT_MISMATCH', `${profit} cents vs OO ${expectedProfit} cents`);
@@ -261,14 +318,16 @@ export async function verify(id, chosenName) {
   for (const trade of economic) {
     const rawOoName = typeof trade.strategyName === 'string' ? trade.strategyName : '';
     const ooName = rawOoName.trim();
-    const name = chosenName?.trim() ?? (ooName || headlineName);
+    const name = members ? members.get(trade.strategyId).label : chosenName?.trim() ?? (ooName || headlineName);
     const source = chosenName !== undefined ? 'user' : ooName ? 'OO trade' : headlineName ? 'OO headline' : 'blank→blockId fallback';
     // TradeBlocks import_csv splits records on physical line breaks, even inside a quoted field.
-    if (/[\r\n]/.test(name)) fail('INVALID_STRATEGY', `${source} strategy name contains a line break, which TradeBlocks import_csv cannot read; choose a single-line name`);
-    const key = JSON.stringify([name, source]);
-    const previous = strategyNames.get(key);
-    strategyNames.set(key, { name, source, rows: (previous?.rows ?? 0) + 1 });
-    if (chosenName !== undefined && ooName && name !== ooName) overriddenOoNames.add(rawOoName);
+    if (/[\r\n]/.test(name)) fail('INVALID_STRATEGY', `${members ? 'OO portfolio member' : source} strategy name contains a line break, which TradeBlocks import_csv cannot read; choose a single-line name`);
+    if (!members) {
+      const key = JSON.stringify([name, source]);
+      const previous = strategyNames.get(key);
+      strategyNames.set(key, { name, source, rows: (previous?.rows ?? 0) + 1 });
+      if (chosenName !== undefined && ooName && name !== ooName) overriddenOoNames.add(rawOoName);
+    }
     lines.push(row(trade, name));
   }
   if (!economic.length) fail('EMPTY_BLOCK', 'import_csv cannot import an empty trade log');
@@ -277,7 +336,7 @@ export async function verify(id, chosenName) {
   await fs.writeFile(csvPath, `${lines.join('\n')}\n`, { mode: 0o600 });
   const dailyLogPath = curve ? path.join(dir, 'dailylog.csv') : null;
   if (curve) await fs.writeFile(dailyLogPath, `${curve.lines.join('\n')}\n`, { mode: 0o600 });
-  const summary = { id, csvPath, source: { [sourceKey]: sourceId }, strategy: { names: [...strategyNames.values()], overriddenOoNames: [...overriddenOoNames] }, trades: economic.length, ignoredRows: all.length - economic.length, openAtEnd: result.numberOfOpenTrades, ooProfit: (expectedProfit / 100).toFixed(2), csvPlBasis: 'net_includes_fees', reconciliation: 'count and net profit match OO to the cent', dailyLogPath, curve: curve?.summary ?? null, curveMissingReason: curve ? null : 'OO headline reports no source date range' };
+  const summary = { id, directory: dir, csvPath, source: { [sourceKey]: sourceId }, ...(members ? { members: [...members.values()].map(({ savedBacktestId, name, label, trades, expectedCents }) => ({ savedBacktestId, name, label, trades, ooProfit: (expectedCents / 100).toFixed(2) })) } : { strategy: { names: [...strategyNames.values()], overriddenOoNames: [...overriddenOoNames] } }), trades: economic.length, ignoredRows: all.length - economic.length, openAtEnd: result.numberOfOpenTrades, ooProfit: (expectedProfit / 100).toFixed(2), csvPlBasis: 'net_includes_fees', reconciliation: members ? 'book and every member count and net profit match OO to the cent' : 'count and net profit match OO to the cent', dailyLogPath, curve: curve ? { ...curve.summary, ...(members && { scope: 'whole-book' }) } : null, curveMissingReason: curve ? null : 'OO headline reports no source date range' };
   await fs.writeFile(path.join(dir, 'verification.json'), `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });
   return summary;
 }
