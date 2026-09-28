@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { dateMillis, plusYears, sessions } from './oo-session-calendar.mjs';
 
 const root = path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'tradeblocks', 'oo-captures');
 const sourceKeys = ['savedBacktestId', 'runId'];
@@ -31,14 +32,14 @@ export async function start(session) {
   const state = { id, session, status: 'armed', startedAt: new Date().toISOString() };
   await saveJson(path.join(dir, 'manifest.json'), state);
   await saveJson(activePath(session), { id, startedAt: state.startedAt });
-  return { id, directory: dir, message: 'Capturing OO headline and paged trade-log JSON, tool arguments, and failures here until stopped. Retained until explicitly deleted.' };
+  return { id, directory: dir, message: 'Capturing OO headline and paged trade-log JSON, tool arguments, and failures here until stopped. Retained until explicitly deleted.', curveMessage: 'Equity-curve windows and their arguments are captured here too.' };
 }
 async function event(dir, entry) {
   // One file per tool call avoids losing concurrent calls to a manifest read/modify/write race.
   await saveJson(path.join(dir, 'responses', `${randomUUID()}.json`), entry);
 }
 export async function hook(input) {
-  const match = /^mcp__[^_]+(?:_[^_]+)*__(get_trade_log|get_saved_backtest|get_backtest_results)$/.exec(input.tool_name || '');
+  const match = /^mcp__[^_]+(?:_[^_]+)*__(get_trade_log|get_saved_backtest|get_backtest_results|get_equity_curve)$/.exec(input.tool_name || '');
   if (!match || !input.session_id) return null;
   const armed = await marker(input.session_id);
   if (!armed) return null;
@@ -125,6 +126,74 @@ function row(trade) {
   const fields = [trade.dateOpened, trade.timeOpened, trade.openingUnderlyingPrice, legs, dollars(trade.premiumPerContract, 'premiumPerContract'), trade.closingUnderlyingPrice, trade.dateClosed, trade.timeClosed, dollars(trade.averageClosingCostPerContract, 'averageClosingCostPerContract'), trade.reasonClosed, dollars(trade.profit, 'profit'), 'net_includes_fees', trade.numberOfContracts, trade.fundsAtClose, trade.buyingPowerRequired, trade.strategyName, dollars(trade.openingFees ?? 0, 'openingFees'), dollars(trade.closingFees ?? 0, 'closingFees')];
   return fields.map(csv).join(',');
 }
+const curveColumns = ['date', 'netLiquidity', 'startingLiquidity', 'realizedFunds', 'tradingFunds', 'profitLoss', 'profitLossPercentage', 'drawdownPercentage'];
+const dailyColumns = ['Date', 'Net Liquidity', 'Current Funds', 'Withdrawn', 'Trading Funds', 'P/L', 'P/L %', 'Drawdown %'];
+function curveCents(value, field) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isSafeInteger(Math.round(value * 100)) || Math.abs(value * 100 - Math.round(value * 100)) > 1e-6)
+    fail('INVALID_CURVE_VALUE', `${field} must be finite with at most two decimal places`);
+  return Math.round(value * 100);
+}
+function curveRows(records, sourceKey, sourceId, server, rangeStart, rangeEnd) {
+  const windows = records.filter((entry) => entry.toolName.endsWith('__get_equity_curve'));
+  if (!windows.length) fail('MISSING_CURVE', 'no equity-curve windows captured');
+  const expected = sessions(rangeStart, rangeEnd);
+  const rows = new Map();
+  const requests = [];
+  for (const window of windows) {
+    const args = window.toolInput?.parameters;
+    if (window.toolName !== `${server}__get_equity_curve` || !args || args[sourceKey] !== sourceId ||
+      sourceKeys.some((key) => key !== sourceKey && args[key] != null) || args.savedPortfolioId != null)
+      fail('CURVE_SOURCE_MISMATCH', 'equity window source or OO server differs from headline');
+    const from = args.seriesStart, through = args.seriesEnd;
+    if (dateMillis(from) === null || dateMillis(through) === null || from > through)
+      fail('INVALID_CURVE_DATE', `invalid window ${from}..${through}`);
+    if (from < rangeStart || through > rangeEnd) fail('CURVE_OUT_OF_RANGE', `${from}..${through} exceeds ${rangeStart}..${rangeEnd}`);
+    if (through > plusYears(from, 2)) fail('CURVE_WINDOW_TOO_LONG', `${from}..${through} exceeds two years`);
+    const covered = sessions(from, through);
+    const coveredSet = new Set(covered);
+    requests.push({ seriesStart: from, seriesEnd: through });
+    const data = window.data;
+    if (!Array.isArray(data.pointColumns) || data.pointColumns.length !== curveColumns.length ||
+      new Set(data.pointColumns).size !== curveColumns.length || curveColumns.some((name) => !data.pointColumns.includes(name)))
+      fail('INVALID_POINT_COLUMNS', 'pointColumns must name each required OO field exactly once');
+    if (!Array.isArray(data.points)) fail('INVALID_CURVE_ROW', 'points must be an array');
+    const column = Object.fromEntries(data.pointColumns.map((name, index) => [name, index]));
+    const windowDates = new Set();
+    for (const point of data.points) {
+      if (!Array.isArray(point) || point.length !== curveColumns.length) fail('INVALID_CURVE_ROW', 'point does not match pointColumns');
+      const date = point[column.date];
+      if (dateMillis(date) === null) fail('INVALID_CURVE_DATE', `invalid point date ${date}`);
+      if (date < from || date > through || !coveredSet.has(date)) fail('CURVE_OUT_OF_RANGE', `point ${date} outside window or not an XNYS session`);
+      if (windowDates.has(date)) fail('DUPLICATE_CURVE_DAY', `duplicate date ${date} within a window`);
+      windowDates.add(date);
+      const values = Object.fromEntries(curveColumns.slice(1).map((name) => [name, curveCents(point[column[name]], `${date} ${name}`)]));
+      const previous = rows.get(date);
+      if (previous && curveColumns.slice(1).some((name) => previous[name] !== values[name]))
+        fail('DISAGREEING_CURVE_OVERLAP', `overlapping windows disagree on ${date}`);
+      rows.set(date, values);
+    }
+    if (dateMillis(data.seriesStart) === null || dateMillis(data.seriesEnd) === null)
+      fail('INVALID_CURVE_DATE', 'response seriesStart or seriesEnd is invalid');
+    if (data.seriesStart !== (covered[0] ?? null) || data.seriesEnd !== (covered.at(-1) ?? null))
+      fail('MISSING_CURVE_DAY', `window ${from}..${through} response boundaries do not cover requested sessions`);
+    for (const date of covered) if (!windowDates.has(date)) fail('MISSING_CURVE_DAY', `${date} absent within ${from}..${through}`);
+  }
+  for (const date of expected) if (!rows.has(date)) fail('MISSING_CURVE_DAY', `${date} absent between windows`);
+  let previous;
+  const lines = [dailyColumns.join(',')];
+  for (const date of expected) {
+    const value = rows.get(date);
+    if (value.profitLoss !== value.netLiquidity - value.startingLiquidity)
+      fail('CURVE_PROFIT_MISMATCH', `${date} profitLoss differs from netLiquidity - startingLiquidity`);
+    if (previous && value.startingLiquidity !== previous.netLiquidity)
+      fail('CURVE_CONTINUITY', `${date} startingLiquidity differs from prior session's netLiquidity`);
+    previous = value;
+    lines.push([date, value.netLiquidity, value.realizedFunds, value.realizedFunds - value.tradingFunds,
+      value.tradingFunds, value.profitLoss, value.profitLossPercentage, value.drawdownPercentage]
+      .map((cell, index) => index ? (cell / 100).toFixed(2) : cell).join(','));
+  }
+  return { lines, summary: { rows: expected.length, rangeStart, rangeEnd, windows: requests.length, requests, maxDrawdownPct: expected.length ? (Math.min(...expected.map((date) => rows.get(date).drawdownPercentage)) / 100).toFixed(2) : null } };
+}
 export async function verify(id) {
   const dir = capturePath(id);
   const manifest = await captureJson(path.join(dir, 'manifest.json'));
@@ -145,6 +214,13 @@ export async function verify(id) {
   const expectedProfit = money(result.profit, 'OO profit');
   // Two OO servers (e.g. production and staging) can reuse an id, so every page must come from the headline's server.
   const server = headline.toolName.slice(0, headline.toolName.lastIndexOf('__'));
+  const rangeStart = headline.data.parameters?.rangeStart;
+  const rangeEnd = headline.data.parameters?.rangeEnd;
+  const hasRange = rangeStart != null && rangeEnd != null;
+  if (hasRange) sessions(rangeStart, rangeEnd);
+  if (!hasRange && sourceKey === 'savedBacktestId') fail('MISSING_CURVE_RANGE', 'saved backtest has no OO-reported range');
+  if (!hasRange && records.some((entry) => entry.toolName.endsWith('__get_equity_curve')))
+    fail('MISSING_CURVE_RANGE', 'OO did not report a source range for these curve windows');
   const pages = records.filter((entry) => entry.toolName.endsWith('__get_trade_log'));
   if (!pages.length) fail('MISSING_PAGE', 'no trade-log pages captured');
   if (pages.some((page) => page.toolName !== `${server}__get_trade_log`)) fail('SOURCE_MISMATCH', 'trade-log page from a different OO server than the headline');
@@ -176,12 +252,15 @@ export async function verify(id) {
   if (economic.length !== result.numberOfTrades) fail('TRADE_COUNT_MISMATCH', `${economic.length} economic rows vs OO ${result.numberOfTrades}`);
   const profit = economic.reduce((sum, trade) => sum + money(trade.profit, 'trade profit'), 0);
   if (profit !== expectedProfit) fail('PROFIT_MISMATCH', `${profit} cents vs OO ${expectedProfit} cents`);
+  const curve = hasRange ? curveRows(records, sourceKey, sourceId, server, rangeStart, rangeEnd) : null;
   const lines = [columns.join(','), ...economic.map(row)];
   if (!economic.length) fail('EMPTY_BLOCK', 'import_csv cannot import an empty trade log');
   // verify is a pure function of the saved responses, so a re-run (after success or an interruption) rewrites both files.
   const csvPath = path.join(dir, 'tradelog.csv');
   await fs.writeFile(csvPath, `${lines.join('\n')}\n`, { mode: 0o600 });
-  const summary = { id, csvPath, source: { [sourceKey]: sourceId }, trades: economic.length, ignoredRows: all.length - economic.length, openAtEnd: result.numberOfOpenTrades, ooProfit: (expectedProfit / 100).toFixed(2), csvPlBasis: 'net_includes_fees', reconciliation: 'count and net profit match OO to the cent' };
+  const dailyLogPath = curve ? path.join(dir, 'dailylog.csv') : null;
+  if (curve) await fs.writeFile(dailyLogPath, `${curve.lines.join('\n')}\n`, { mode: 0o600 });
+  const summary = { id, csvPath, source: { [sourceKey]: sourceId }, trades: economic.length, ignoredRows: all.length - economic.length, openAtEnd: result.numberOfOpenTrades, ooProfit: (expectedProfit / 100).toFixed(2), csvPlBasis: 'net_includes_fees', reconciliation: 'count and net profit match OO to the cent', dailyLogPath, curve: curve?.summary ?? null, curveMissingReason: curve ? null : 'OO headline reports no source date range' };
   await fs.writeFile(path.join(dir, 'verification.json'), `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });
   return summary;
 }
