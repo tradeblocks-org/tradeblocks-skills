@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Fail when a tracked Markdown file links to a repository file that does not exist.
 // Checks inline links and images, `[text](target)`; external URLs and in-page anchors are skipped.
+// Destinations follow CommonMark: `<...>` or balanced/backslash-escaped parentheses, with an
+// optional title; `?query` and `#fragment` are not part of the file path.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -9,24 +11,66 @@ const files = execFileSync("git", ["ls-files", "-z", "*.md"], { encoding: "utf8"
   .split("\0")
   .filter(Boolean);
 
-const link = /!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+["'(][^)]*)?\)/g;
+const opener = /\[[^\]]*\]\(/g;
 const external = /^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i;
+const titleClose = { '"': '"', "'": "'", "(": ")" };
 const missing = [];
+
+// Parse an inline-link destination starting at `i`, just after `](`. Returns the raw
+// destination, or null when the text there is not a link.
+function destination(line, i) {
+  while (line[i] === " " || line[i] === "\t") i++;
+  let target = "";
+  if (line[i] === "<") {
+    const end = line.indexOf(">", i + 1);
+    if (end < 0) return null;
+    target = line.slice(i + 1, end);
+    i = end + 1;
+  } else {
+    let depth = 0;
+    for (; i < line.length; i++) {
+      const c = line[i];
+      if (c === "\\" && /[()\\]/.test(line[i + 1] ?? "")) {
+        target += line[++i];
+        continue;
+      }
+      if (c === " " || c === "\t") break;
+      if (c === "(") depth++;
+      else if (c === ")" && depth-- === 0) break;
+      target += c;
+    }
+    if (depth > 0) return null;
+  }
+  while (line[i] === " " || line[i] === "\t") i++;
+  if (titleClose[line[i]]) {
+    const end = line.indexOf(titleClose[line[i]], i + 1);
+    if (end < 0) return null;
+    i = end + 1;
+    while (line[i] === " " || line[i] === "\t") i++;
+  }
+  return line[i] === ")" && target ? target : null;
+}
 
 for (const file of files) {
   let fence = null;
   readFileSync(file, "utf8").split("\n").forEach((line, i) => {
-    const marker = line.match(/^\s*(`{3,}|~{3,})/);
-    if (marker) {
-      if (!fence) fence = marker[1][0];
-      else if (marker[1][0] === fence) fence = null;
+    if (fence) {
+      // A closing fence repeats the opener's character at least as many times, with no info string.
+      const close = line.match(/^\s*(`{3,}|~{3,})\s*$/);
+      if (close && close[1][0] === fence[0] && close[1].length >= fence.length) fence = null;
       return;
     }
-    if (fence) return;
-    for (const [, target] of line.replace(/`[^`]*`/g, "").matchAll(link)) {
-      if (external.test(target)) continue;
-      const path = decodeURIComponent(target.split("#")[0]);
-      if (!existsSync(join(dirname(file), path))) missing.push(`${file}:${i + 1}: ${target}`);
+    const open = line.match(/^\s*(`{3,}|~{3,})/);
+    if (open) {
+      fence = open[1];
+      return;
+    }
+    const text = line.replace(/`[^`]*`/g, "");
+    for (const match of text.matchAll(opener)) {
+      const target = destination(text, match.index + match[0].length);
+      if (!target || external.test(target)) continue;
+      const path = decodeURIComponent(target.split(/[?#]/)[0]);
+      if (path && !existsSync(join(dirname(file), path))) missing.push(`${file}:${i + 1}: ${target}`);
     }
   });
 }
