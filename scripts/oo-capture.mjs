@@ -3,6 +3,8 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const root = path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'tradeblocks', 'oo-captures');
 const sourceKeys = ['savedBacktestId', 'runId'];
@@ -182,7 +184,8 @@ export async function remove(id) {
   await fs.rm(dir, { recursive: true });
   return { deleted: id, note: 'Imported TradeBlocks blocks are separate; delete one with its normal TradeBlocks block action.' };
 }
-const cli = process.argv[1] && path.resolve(process.argv[1]) === new URL(import.meta.url).pathname;
+// Compare native real paths: a URL pathname is percent-escaped and a symlinked install differs from its target.
+const cli = process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
 if (cli) {
   const [command, arg] = process.argv.slice(2);
   try {

@@ -153,3 +153,14 @@ test('missing provenance file cannot be published', async () => {
   await fs.unlink(path.join(dir, 'responses', files.find((name) => name.endsWith('.txt'))));
   await assert.rejects(verify(id), /MISSING_CAPTURE_FILE:/);
 });
+test('CLI runs when installed under an escaped or symlinked path', async () => {
+  // A plugin directory with a space percent-escapes import.meta.url; a symlinked install differs from its target.
+  const dir = await fs.mkdtemp(path.join(home, 'plugin dir '));
+  await fs.cp(new URL('../scripts', import.meta.url), path.join(dir, 'scripts'), { recursive: true });
+  await fs.symlink(dir, path.join(home, 'linked-plugin'));
+  for (const script of [path.join(dir, 'scripts', 'oo-capture.mjs'), path.join(home, 'linked-plugin', 'scripts', 'oo-capture.mjs')]) {
+    const run = spawnSync(process.execPath, [script, 'list'], { encoding: 'utf8', env: process.env });
+    assert.equal(run.status, 0, run.stderr);
+    assert.ok(Array.isArray(JSON.parse(run.stdout)), script);
+  }
+});
