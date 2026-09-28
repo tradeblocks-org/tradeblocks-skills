@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "^mcp__.+__(get_trade_log|get_saved_backtest|get_backtest_results)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/oo-capture-hook.mjs"]
+          }
+        ]
+      }
+    ]
+  }
+}
