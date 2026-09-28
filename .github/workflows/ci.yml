@@ -22,7 +22,10 @@ jobs:
         shell: bash # -eo pipefail: a failure anywhere in a pipeline fails the step
 
     steps:
+      # PR code runs in later steps; keep the token out of the checkout's Git config.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -37,10 +40,14 @@ jobs:
       # no unknown fields).
       - name: Validate listed skills
         run: |
-          jq -r '.plugins[] | .source as $src | .skills[] | "\($src)/\(.)"' .claude-plugin/marketplace.json |
+          skills=$(jq -r '.plugins[] | .source as $src | .skills[] | "\($src)/\(.)"' .claude-plugin/marketplace.json)
+          if [ -z "$skills" ]; then
+            echo "::error file=.claude-plugin/marketplace.json::marketplace lists no skills"
+            exit 1
+          fi
           while read -r skill; do
             pipx run --spec skills-ref==0.1.1 agentskills validate "$skill"
-          done
+          done <<< "$skills"
 
       - name: Check relative links
         run: node .github/scripts/check-links.mjs
