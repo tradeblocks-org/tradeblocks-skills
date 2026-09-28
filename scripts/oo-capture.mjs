@@ -72,7 +72,11 @@ export async function hook(input) {
     const rawFile = `${randomUUID()}.txt`;
     await fs.writeFile(path.join(dir, 'responses', rawFile), text, { flag: 'wx', mode: 0o600 });
     await event(dir, { ...entry, rawFile, origin });
-    return { captureId: armed.id, origin, toolName: entry.toolName };
+    const data = JSON.parse(text);
+    const page = entry.toolName.endsWith('__get_trade_log') && Number.isInteger(data.offset) && Array.isArray(data.items) && Number.isInteger(data.totalCount)
+      ? { offset: data.offset, itemCount: data.items.length, totalCount: data.totalCount, nextOffset: data.nextOffset ?? null }
+      : null;
+    return { captureId: armed.id, origin, toolName: entry.toolName, page };
   } catch (error) {
     const reason = error.message.match(/^([A-Z_]+):/)?.[1] || 'CAPTURE_IO_FAILURE';
     await event(dir, { ...entry, failure: reason, detail: error.message });
@@ -142,12 +146,13 @@ export async function verify(id) {
     if (page.toolInput.offset < offset) fail('DUPLICATE_PAGE', `offset ${page.toolInput.offset} overlaps prior page`);
     if (page.toolInput.offset > offset) fail('MISSING_PAGE', `expected offset ${offset}, got ${page.toolInput.offset}`);
     if (page.data.totalCount !== count) fail('UNSTABLE_TOTAL', 'totalCount changed between pages');
-    if (page.data.items.length > 100 || (page.data.nextOffset !== null && page.data.items.length !== 100)) fail('INVALID_PAGE', 'non-terminal page must contain 100 trades');
+    const nextOffset = page.data.nextOffset ?? null;
+    if (page.data.items.length > 100 || (nextOffset !== null && page.data.items.length !== 100)) fail('INVALID_PAGE', 'non-terminal page must contain 100 trades');
     offset += page.data.items.length;
-    if (page.data.nextOffset !== (offset === count ? null : offset)) fail('INTERRUPTED_CAPTURE', `nextOffset incorrect or terminal page absent at ${offset}`);
+    if (nextOffset !== (offset === count ? null : offset)) fail('INTERRUPTED_CAPTURE', `nextOffset incorrect or terminal page absent at ${offset}`);
     all.push(...page.data.items);
   }
-  if (offset !== count || pages.at(-1).data.nextOffset !== null) fail('INTERRUPTED_CAPTURE', 'last page not terminal');
+  if (offset !== count || pages.at(-1).data.nextOffset != null) fail('INTERRUPTED_CAPTURE', 'last page not terminal');
   const economic = all.filter((item) => item.isIgnored !== true);
   if (economic.length !== result.numberOfTrades) fail('TRADE_COUNT_MISMATCH', `${economic.length} economic rows vs OO ${result.numberOfTrades}`);
   const profit = economic.reduce((sum, trade) => sum + money(trade.profit, 'trade profit'), 0);

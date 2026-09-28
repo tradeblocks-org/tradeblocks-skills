@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { spawnSync } from 'node:child_process';
 
 const home = await fs.mkdtemp(path.join(os.tmpdir(), 'oo-capture-test-'));
 process.env.XDG_DATA_HOME = home;
@@ -67,6 +68,25 @@ refusal('filtered log', { pageMutator: (args) => { args.outcome = 'winners'; } }
 refusal('started but not stopped', { stopCapture: false }, 'INTERRUPTED_CAPTURE');
 refusal('stopped mid-paging', { rows: Array.from({ length: 100 }, (_, index) => trade(index === 0 ? 19 : 0)), headline: { numberOfTrades: 100 }, pageMutator: (args, data) => { data.totalCount = 101; data.nextOffset = 100; } }, 'INTERRUPTED_CAPTURE');
 refusal('profit mismatch', { headline: { profit: 18.99 } }, 'PROFIT_MISMATCH');
+test('OO terminal page with omitted nextOffset publishes', async () => {
+  const { id } = await capture({ pageMutator: (args, data) => { delete data.nextOffset; } });
+  const summary = await verify(id);
+  assert.deepEqual([summary.trades, summary.ignoredRows, summary.ooProfit], [1, 1, '19.00']);
+});
+refusal('omitted nextOffset before total count', { pageMutator: (args, data) => { delete data.nextOffset; data.totalCount += 1; } }, 'INTERRUPTED_CAPTURE');
+test('hook message supplies page facts without opening saved result', async () => {
+  const session = `session_${serial++}`;
+  await start(session);
+  const first = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1', offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' }, { offset: 0, items: Array(100).fill(trade(0)), totalCount: 101, nextOffset: 100, sortedBy: 'opened', direction: 'asc' });
+  const firstCall = spawnSync(process.execPath, [new URL('../scripts/oo-capture-hook.mjs', import.meta.url).pathname], { input: JSON.stringify(first), encoding: 'utf8', env: process.env });
+  assert.equal(firstCall.status, 0, firstCall.stderr);
+  assert.match(JSON.parse(firstCall.stdout).hookSpecificOutput.additionalContext, /Page offset=0, items=100, totalCount=101, nextOffset=100/);
+  const input = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1', offset: 100, limit: 100, sortBy: 'opened', direction: 'asc' }, { offset: 100, items: [trade(19)], totalCount: 101, sortedBy: 'opened', direction: 'asc' });
+  const completed = spawnSync(process.execPath, [new URL('../scripts/oo-capture-hook.mjs', import.meta.url).pathname], { input: JSON.stringify(input), encoding: 'utf8', env: process.env });
+  assert.equal(completed.status, 0, completed.stderr);
+  assert.match(JSON.parse(completed.stdout).hookSpecificOutput.additionalContext, /Page offset=100, items=1, totalCount=101, nextOffset=terminal/);
+  await stop(session);
+});
 test('OO null fees mean no fee charged, preserve reported net profit', async () => {
   const { id } = await capture({ rows: [trade(19, { openingFees: null, closingFees: null })] });
   const result = await verify(id);
