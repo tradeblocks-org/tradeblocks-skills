@@ -19,7 +19,11 @@ skills/               8 skill directories, each with SKILL.md + references/
 
 ## Setup
 
-No build, lint, or test steps — skills are static markdown. The TradeBlocks MCP server must be installed and running separately.
+No build step — skills are static markdown. The TradeBlocks MCP server must be installed and running separately.
+
+## CI
+
+`.github/workflows/ci.yml` runs the `validate` job on every pull request to `main` and every push to `main`; branch protection requires it, up to date with `main`. It validates the plugin and marketplace manifests (`claude plugin validate --strict .`), validates every skill `marketplace.json` lists against the Agent Skills specification (`agentskills validate` from `skills-ref`), fails on relative Markdown links to missing files (`.github/scripts/check-links.mjs`), and runs `npm test` when `package.json` declares it.
 
 ## Skill Structure
 
