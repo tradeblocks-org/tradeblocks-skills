@@ -17,6 +17,9 @@ jobs:
   validate:
     name: validate
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash # -eo pipefail: a failure anywhere in a pipeline fails the step
 
     steps:
       - uses: actions/checkout@v4
