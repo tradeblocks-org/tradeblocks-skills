@@ -16,11 +16,11 @@ function trade(n, overrides = {}) {
 function event(session, name, toolInput, output) {
   return { tool_name: `mcp__my_oo__${name}`, session_id: session, tool_input: toolInput, tool_response: JSON.stringify(output), tool_use_id: `toolu_${serial++}` };
 }
-async function capture({ rows = [trade(19), trade(900, { isIgnored: true })], headline = {}, pages, pageMutator, stopCapture = true } = {}) {
+async function capture({ rows = [trade(19), trade(900, { isIgnored: true })], headline = {}, pages, pageMutator, stopCapture = true, curveMutator, range = ['2026-01-02', '2026-01-05'], extraCurveWindows = [], noCurve = false } = {}) {
   const session = `session_${serial++}`;
   const { id } = await start(session);
   const source = { savedBacktestId: 'backtest-1' };
-  await hook(event(session, 'get_saved_backtest', source, { id: 'backtest-1', parameters: { name: 'fixture' }, result: { numberOfTrades: 1, numberOfOpenTrades: 2, profit: 19, ...headline } }));
+  await hook(event(session, 'get_saved_backtest', source, { id: 'backtest-1', parameters: { name: 'fixture', rangeStart: range[0], rangeEnd: range[1] }, result: { numberOfTrades: 1, numberOfOpenTrades: 2, profit: 19, ...headline } }));
   const chunks = pages || [rows];
   for (let i = 0, offset = 0; i < chunks.length; i++) {
     const args = { ...source, sortBy: 'opened', direction: 'asc', limit: 100, offset };
@@ -28,6 +28,19 @@ async function capture({ rows = [trade(19), trade(900, { isIgnored: true })], he
     pageMutator?.(args, data, i);
     await hook(event(session, 'get_trade_log', args, data));
     offset += chunks[i].length;
+  }
+  const args = { parameters: { ...source, seriesStart: '2026-01-02', seriesEnd: '2026-01-05' } };
+  const data = { seriesStart: '2026-01-02', seriesEnd: '2026-01-05', pointColumns: ['date', 'netLiquidity', 'startingLiquidity', 'realizedFunds', 'tradingFunds', 'profitLoss', 'profitLossPercentage', 'drawdownPercentage'], points: [
+    ['2026-01-02', 1000, 1000, 1000, 1000, 0, 0, 0],
+    ['2026-01-05', 990, 1000, 1000, 1000, -10, -1, -1],
+  ] };
+  curveMutator?.(args, data);
+  if (!noCurve) {
+    await hook(event(session, 'get_equity_curve', args, data));
+    for (const window of extraCurveWindows) {
+      const call = event(session, 'get_equity_curve', window.args, window.data);
+      await hook(window.server ? { ...call, tool_name: `mcp__${window.server}__get_equity_curve` } : call);
+    }
   }
   if (stopCapture) await stop(session);
   return { id, session };
@@ -43,6 +56,10 @@ test('verified OO economic log excludes ignored profits, keeps net fees, decimal
   const { id } = await capture();
   const result = await verify(id);
   assert.deepEqual([result.trades, result.ignoredRows, result.openAtEnd, result.ooProfit, result.csvPlBasis], [1, 1, 2, '19.00', 'net_includes_fees']);
+  assert.equal(result.curve.rows, 2);
+  assert.equal(result.curve.maxDrawdownPct, '-1.00');
+  assert.equal(result.dailyLogPath, path.join(home, 'tradeblocks', 'oo-captures', id, 'dailylog.csv'));
+  assert.equal((await fs.readFile(result.dailyLogPath, 'utf8')).split('\n').length, 4);
   const csv = await fs.readFile(result.csvPath, 'utf8');
   assert.match(csv, /,200\.00,/);
   assert.match(csv, /,19\.00,net_includes_fees,2,/);
@@ -51,6 +68,7 @@ test('verified OO economic log excludes ignored profits, keeps net fees, decimal
   assert.equal((await list()).find((entry) => entry.id === id).verified, true);
   await remove(id);
   assert.equal((await list()).some((entry) => entry.id === id), false);
+  await assert.rejects(fs.access(result.dailyLogPath));
 });
 test('hook outside start and after stop saves nothing', async () => {
   const session = `session_${serial++}`;
@@ -145,6 +163,17 @@ test('runId source binds results and pages without a saved-backtest ID', async (
   await hook(event(session, 'get_trade_log', { runId: 'run-7', offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' }, { offset: 0, totalCount: 1, items: [trade(19)], nextOffset: null, sortedBy: 'opened', direction: 'asc' }));
   await stop(session);
   assert.deepEqual((await verify(id)).source, { runId: 'run-7' });
+  assert.equal((await verify(id)).curveMissingReason, 'OO headline reports no source date range');
+});
+test('run without OO-reported range refuses captured curve rather than silently ignoring it', async () => {
+  const session = `session_${serial++}`;
+  const { id } = await start(session);
+  await hook(event(session, 'get_backtest_results', { runId: 'run-7' }, { numberOfTrades: 1, numberOfOpenTrades: 0, profit: 19 }));
+  await hook(event(session, 'get_trade_log', { runId: 'run-7', offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' },
+    { offset: 0, totalCount: 1, items: [trade(19)], sortedBy: 'opened', direction: 'asc' }));
+  await hook(event(session, 'get_equity_curve', { parameters: { runId: 'run-7', seriesStart: '2026-01-02', seriesEnd: '2026-01-05' } }, {}));
+  await stop(session);
+  await assert.rejects(verify(id), /MISSING_CURVE_RANGE:/);
 });
 test('missing provenance file cannot be published', async () => {
   const { id } = await capture();
@@ -195,4 +224,77 @@ test('pages from another OO server with a colliding id and matching totals refus
   await hook({ ...page, tool_name: 'mcp__oo_prod__get_trade_log' });
   await stop(session);
   await assert.rejects(verify(id), /SOURCE_MISMATCH:/);
+});
+
+const pointColumns = ['date', 'netLiquidity', 'startingLiquidity', 'realizedFunds', 'tradingFunds', 'profitLoss', 'profitLossPercentage', 'drawdownPercentage'];
+function extra(from, through, points, source = 'backtest-1') {
+  return { args: { parameters: { savedBacktestId: source, seriesStart: from, seriesEnd: through } },
+    data: { seriesStart: points[0][0], seriesEnd: points.at(-1)[0], pointColumns, points } };
+}
+refusal('missing trading session inside window', { curveMutator: (_, data) => {
+  data.points.pop(); data.seriesEnd = '2026-01-02';
+} }, 'MISSING_CURVE_DAY');
+refusal('missing trading session between windows', { range: ['2026-01-02', '2026-01-06'], curveMutator: (args, data) => {
+  args.parameters.seriesEnd = '2026-01-02'; data.seriesEnd = '2026-01-02'; data.points.pop();
+}, extraCurveWindows: [extra('2026-01-06', '2026-01-06', [['2026-01-06', 980, 990, 1000, 1000, -10, -1, -2]])] }, 'MISSING_CURVE_DAY');
+refusal('duplicate date in a curve window', { curveMutator: (_, data) => data.points.push([...data.points[1]]) }, 'DUPLICATE_CURVE_DAY');
+refusal('disagreeing overlap of two curve windows', { extraCurveWindows: [extra('2026-01-05', '2026-01-05', [['2026-01-05', 991, 1000, 1000, 1000, -9, -.9, -.9]])] }, 'DISAGREEING_CURVE_OVERLAP');
+test('agreeing overlap is accepted once; withdrawal and percentage signs retain OO units', async () => {
+  const { id } = await capture({ extraCurveWindows: [extra('2026-01-05', '2026-01-05', [['2026-01-05', 990, 1000, 1000, 1000, -10, -1, -1]])],
+    curveMutator: (_, data) => { data.points[1][3] = 1010; data.points[1][4] = 1000; } });
+  // An agreeing shared day must match all required OO values, not only net liquidity.
+  await assert.rejects(verify(id), /DISAGREEING_CURVE_OVERLAP:/);
+  const accepted = await capture({ extraCurveWindows: [extra('2026-01-05', '2026-01-05', [['2026-01-05', 990, 1000, 1010, 1000, -10, -1, -1]])],
+    curveMutator: (_, data) => { data.points[1][3] = 1010; data.points[1][4] = 1000; } });
+  const result = await verify(accepted.id);
+  assert.equal(result.curve.rows, 2);
+  assert.equal(result.curve.windows, 2);
+  assert.equal(result.curve.maxDrawdownPct, '-1.00');
+  assert.equal(await fs.readFile(result.dailyLogPath, 'utf8'),
+    'Date,Net Liquidity,Current Funds,Withdrawn,Trading Funds,P/L,P/L %,Drawdown %\n2026-01-02,1000.00,1000.00,0.00,1000.00,0.00,0.00,0.00\n2026-01-05,990.00,1010.00,10.00,1000.00,-10.00,-1.00,-1.00\n');
+});
+refusal('foreign-run curve window', { curveMutator: (args) => { args.parameters.savedBacktestId = 'other'; } }, 'CURVE_SOURCE_MISMATCH');
+refusal('foreign-server curve window', { extraCurveWindows: [{ ...extra('2026-01-05', '2026-01-05', [['2026-01-05', 990, 1000, 1000, 1000, -10, -1, -1]]), server: 'other_oo' }] }, 'CURVE_SOURCE_MISMATCH');
+refusal('portfolio curve window', { curveMutator: (args) => { args.parameters.savedPortfolioId = 'portfolio'; } }, 'CURVE_SOURCE_MISMATCH');
+refusal('curve window outside OO source range', { curveMutator: (args) => { args.parameters.seriesEnd = '2026-01-06'; } }, 'CURVE_OUT_OF_RANGE');
+refusal('curve window longer than two years', { range: ['2024-01-02', '2026-01-05'], curveMutator: (args) => { args.parameters.seriesStart = '2024-01-02'; } }, 'CURVE_WINDOW_TOO_LONG');
+refusal('pointColumns missing required name', { curveMutator: (_, data) => { data.pointColumns[1] = 'other'; } }, 'INVALID_POINT_COLUMNS');
+refusal('pointColumns duplicate required name', { curveMutator: (_, data) => { data.pointColumns[1] = 'date'; } }, 'INVALID_POINT_COLUMNS');
+refusal('curve continuity broken at window join', { range: ['2026-01-02', '2026-01-06'], curveMutator: (args, data) => {
+  args.parameters.seriesEnd = '2026-01-05';
+}, extraCurveWindows: [extra('2026-01-06', '2026-01-06', [['2026-01-06', 980, 1000, 1000, 1000, -20, -2, -2]])] }, 'CURVE_CONTINUITY');
+refusal('curve P/L differs from daily net liquidity change', { curveMutator: (_, data) => { data.points[1][5] = -9; } }, 'CURVE_PROFIT_MISMATCH');
+refusal('non-cent curve number', { curveMutator: (_, data) => { data.points[1][6] = -1.001; } }, 'INVALID_CURVE_VALUE');
+refusal('non-finite curve number', { curveMutator: (_, data) => { data.points[1][4] = 'NaN'; } }, 'INVALID_CURVE_VALUE');
+refusal('invalid curve date', { curveMutator: (_, data) => { data.points[1][0] = '2026-02-30'; } }, 'INVALID_CURVE_DATE');
+refusal('saved backtest with no curve windows', { noCurve: true }, 'MISSING_CURVE');
+test('NYSE holiday is not a missing day', async () => {
+  const { id } = await capture({ range: ['2026-01-02', '2026-01-05'] });
+  assert.equal((await verify(id)).curve.rows, 2);
+  const holiday = await capture({ range: ['2025-01-09', '2025-01-10'], curveMutator: (args, data) => {
+    args.parameters.seriesStart = '2025-01-09'; args.parameters.seriesEnd = '2025-01-10';
+    data.seriesStart = '2025-01-10'; data.seriesEnd = '2025-01-10';
+    data.points = [['2025-01-10', 1000, 1000, 1000, 1000, 0, 0, 0]];
+  } });
+  assert.equal((await verify(holiday.id)).curve.rows, 1);
+});
+test('curve hook retains inline and saved-file JSON bytes with arguments', async () => {
+  const session = `session_${serial++}`;
+  const { id } = await start(session);
+  const parent = path.join(home, 'curve-session');
+  const dir = path.join(parent, session, 'tool-results');
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, 'mcp-my_oo-get_equity_curve-123.txt');
+  const text = '{ "seriesStart":"2026-01-02", "points":[], "note":"é" }\n';
+  await fs.writeFile(file, text);
+  const input = { ...event(session, 'get_equity_curve', { parameters: { savedBacktestId: 'backtest-1', seriesStart: '2026-01-02', seriesEnd: '2026-01-05' } }, {}),
+    transcript_path: path.join(parent, `${session}.jsonl`) };
+  await hook({ ...input, tool_response: text });
+  await hook({ ...input, tool_response: [{ type: 'text', text: `Result saved to ${file}` }] });
+  const responseDir = path.join(home, 'tradeblocks', 'oo-captures', id, 'responses');
+  const entries = await Promise.all((await fs.readdir(responseDir)).filter((name) => name.endsWith('.json')).map((name) => fs.readFile(path.join(responseDir, name), 'utf8').then(JSON.parse)));
+  assert.deepEqual(entries.map((entry) => entry.origin).sort(), ['inline', 'saved-file']);
+  assert.ok(entries.every((entry) => entry.toolInput.parameters.savedBacktestId === 'backtest-1'));
+  assert.deepEqual(await Promise.all(entries.map((entry) => fs.readFile(path.join(responseDir, entry.rawFile), 'utf8'))), [text, text]);
+  await stop(session);
 });
