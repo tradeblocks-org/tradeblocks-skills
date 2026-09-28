@@ -67,7 +67,20 @@ refusal('filtered log', { pageMutator: (args) => { args.outcome = 'winners'; } }
 refusal('started but not stopped', { stopCapture: false }, 'INTERRUPTED_CAPTURE');
 refusal('stopped mid-paging', { rows: Array.from({ length: 100 }, (_, index) => trade(index === 0 ? 19 : 0)), headline: { numberOfTrades: 100 }, pageMutator: (args, data) => { data.totalCount = 101; data.nextOffset = 100; } }, 'INTERRUPTED_CAPTURE');
 refusal('profit mismatch', { headline: { profit: 18.99 } }, 'PROFIT_MISMATCH');
-refusal('unknown fee basis', { rows: [trade(19, { closingFees: null })] }, 'UNKNOWN_FEES');
+test('OO null fees mean no fee charged, preserve reported net profit', async () => {
+  const { id } = await capture({ rows: [trade(19, { openingFees: null, closingFees: null })] });
+  const result = await verify(id);
+  const csv = await fs.readFile(result.csvPath, 'utf8');
+  assert.match(csv, /,19\.00,net_includes_fees,2,/);
+  assert.match(csv, /,0\.00,0\.00\n/);
+});
+test('absent OO fee field refuses publication', async () => {
+  const item = trade(19);
+  delete item.closingFees;
+  const { id } = await capture({ rows: [item] });
+  await assert.rejects(verify(id), /UNKNOWN_FEES:/);
+  await assert.rejects(fs.access(path.join(home, 'tradeblocks', 'oo-captures', id, 'tradelog.csv')));
+});
 refusal('filter key present but null', { pageMutator: (args) => { args.outcome = null; } }, 'FILTERED_LOG');
 test('expired saved file is a recorded named failure, not publication', async () => {
   const session = `session_${serial++}`;

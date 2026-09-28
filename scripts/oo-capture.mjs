@@ -99,10 +99,10 @@ function row(trade) {
   if (!/^\d{4}-\d\d-\d\d$/.test(trade.dateOpened || '') || !trade.dateClosed || !/^\d{4}-\d\d-\d\d$/.test(trade.dateClosed)) fail('INVALID_TRADE', 'economic trade needs valid open and close dates');
   if (!Number.isInteger(trade.numberOfContracts) || trade.numberOfContracts < 1) fail('INVALID_TRADE', 'numberOfContracts must be positive integer');
   if (!Array.isArray(trade.legs)) fail('INVALID_TRADE', 'legs must be an array');
-  if (trade.openingFees == null || trade.closingFees == null) fail('UNKNOWN_FEES', 'OO fee fields are unavailable; cannot publish a known fee basis');
+  if ([trade.openingFees, trade.closingFees].some((fee) => fee === undefined || (fee !== null && (typeof fee !== 'number' || !Number.isFinite(fee))))) fail('UNKNOWN_FEES', 'OO fee fields must be present numbers or null (no fee charged)');
   for (const leg of trade.legs) dollars(leg.pricePerContract, 'leg pricePerContract');
   const legs = trade.legs.map((leg) => `${leg.buySell} ${leg.numberOfContracts} ${leg.expiration ?? ''} ${leg.strike} ${leg.optionType} @ ${dollars(leg.pricePerContract, 'leg pricePerContract')}`).join('; ');
-  const fields = [trade.dateOpened, trade.timeOpened, trade.openingUnderlyingPrice, legs, dollars(trade.premiumPerContract, 'premiumPerContract'), trade.closingUnderlyingPrice, trade.dateClosed, trade.timeClosed, dollars(trade.averageClosingCostPerContract, 'averageClosingCostPerContract'), trade.reasonClosed, dollars(trade.profit, 'profit'), 'net_includes_fees', trade.numberOfContracts, trade.fundsAtClose, trade.buyingPowerRequired, trade.strategyName, dollars(trade.openingFees, 'openingFees'), dollars(trade.closingFees, 'closingFees')];
+  const fields = [trade.dateOpened, trade.timeOpened, trade.openingUnderlyingPrice, legs, dollars(trade.premiumPerContract, 'premiumPerContract'), trade.closingUnderlyingPrice, trade.dateClosed, trade.timeClosed, dollars(trade.averageClosingCostPerContract, 'averageClosingCostPerContract'), trade.reasonClosed, dollars(trade.profit, 'profit'), 'net_includes_fees', trade.numberOfContracts, trade.fundsAtClose, trade.buyingPowerRequired, trade.strategyName, dollars(trade.openingFees ?? 0, 'openingFees'), dollars(trade.closingFees ?? 0, 'closingFees')];
   return fields.map(csv).join(',');
 }
 export async function verify(id) {
