@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A Claude Code plugin providing guided analysis skills for Option Omega backtests and options trading portfolios. Requires the [TradeBlocks](https://github.com/davidromeo/tradeblocks) MCP server to be running separately. Distributed via the Agent Skills marketplace.
+A Claude Code plugin providing guided analysis skills for Option Omega backtests and options trading portfolios. Requires the [TradeBlocks](https://github.com/tradeblocks-org/tradeblocks) MCP server to be running separately. Distributed via the Agent Skills marketplace.
 
 ## Architecture
 
@@ -44,7 +44,7 @@ Followed by: Prerequisites → Process (numbered steps with specific MCP tool ca
 
 - `.claude-plugin/plugin.json` — name, version, author for the plugin itself
 - `.claude-plugin/marketplace.json` — lists all skills, sets `strict: true`, defines marketplace entry
-- Install path: `/plugin marketplace add davidromeo/tradeblocks-skills` then `/plugin install tradeblocks@tradeblocks-skills`
+- Install path: `/plugin marketplace add tradeblocks-org/tradeblocks-skills` then `/plugin install tradeblocks@tradeblocks-skills`
 
 ## Domain Concepts
 

@@ -2,7 +2,7 @@
 
 Agent skills for analyzing Option Omega backtests and options trading portfolios. Works with [Claude Code](https://claude.ai/code), [Claude.ai](https://claude.ai), and other [Agent Skills](https://agentskills.io)-compatible tools.
 
-Requires the [TradeBlocks](https://github.com/davidromeo/tradeblocks) MCP server to be running.
+Requires the [TradeBlocks](https://github.com/tradeblocks-org/tradeblocks) MCP server, installed and running separately; this plugin does not bundle it.
 
 ## What's included
 
@@ -27,7 +27,7 @@ Guided workflows that chain TradeBlocks MCP tools together for common analysis t
 First, add the marketplace:
 
 ```
-/plugin marketplace add davidromeo/tradeblocks-skills
+/plugin marketplace add tradeblocks-org/tradeblocks-skills
 ```
 
 Then install the plugin:
@@ -46,7 +46,7 @@ cp -r skills/dc-analysis ~/.claude/skills/
 
 ## Prerequisites
 
-- **TradeBlocks MCP server**: Must be installed and running — see [TradeBlocks](https://github.com/davidromeo/tradeblocks)
+- **TradeBlocks MCP server**: Must be installed and running — see [TradeBlocks](https://github.com/tradeblocks-org/tradeblocks)
 - **Trade data**: Export your Option Omega backtests as CSV (tradelog format)
 - **Market data**: Import SPX/QQQ daily OHLCV and VIX context for regime analysis
 - **API key** (optional): Set `MASSIVE_API_KEY` for automatic intraday data fetching during trade replay
@@ -77,6 +77,6 @@ Option Omega CSV --> import_csv --> DuckDB --> Tools --> Skills --> Analysis
 
 ## Links
 
-- [TradeBlocks](https://github.com/davidromeo/tradeblocks) — Main application
+- [TradeBlocks](https://github.com/tradeblocks-org/tradeblocks) — Main application
 - [Option Omega](https://optionomega.com) — Options backtesting platform
 - [Agent Skills spec](https://agentskills.io) — Open standard for agent skills
