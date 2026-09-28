@@ -164,3 +164,24 @@ test('CLI runs when installed under an escaped or symlinked path', async () => {
     assert.ok(Array.isArray(JSON.parse(run.stdout)), script);
   }
 });
+test('saved result under a session path with spaces is captured; one outside the session is foreign', async () => {
+  const session = `session_${serial++}`;
+  await start(session);
+  const parent = path.join(home, 'Users', 'Jane Q Trader', 'project');
+  const fileDir = path.join(parent, session, 'tool-results');
+  await fs.mkdir(fileDir, { recursive: true });
+  const saved = path.join(fileDir, 'mcp-my_oo-get_trade_log-9.txt');
+  await fs.writeFile(saved, '{"offset":0,"items":[]}');
+  const base = { ...event(session, 'get_trade_log', {}, {}), transcript_path: path.join(parent, `${session}.jsonl`) };
+  assert.equal((await hook({ ...base, tool_response: `Output has been saved to ${saved}.` })).origin, 'saved-file');
+  const foreignDir = path.join(home, 'other-session', 'tool-results');
+  await fs.mkdir(foreignDir, { recursive: true });
+  const foreign = path.join(foreignDir, 'mcp-my_oo-get_trade_log-9.txt');
+  await fs.writeFile(foreign, '{}');
+  assert.equal((await hook({ ...base, tool_response: `Output has been saved to ${foreign}.` })).failure, 'FOREIGN_SAVED_FILE');
+  await stop(session);
+});
+test('verify can be re-run and gives the same result', async () => {
+  const { id } = await capture({});
+  assert.deepEqual(await verify(id), await verify(id));
+});

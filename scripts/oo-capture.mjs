@@ -53,14 +53,21 @@ export async function hook(input) {
     else if (Array.isArray(content) && content.length === 1 && content[0].type === 'text' && typeof content[0].text === 'string' && isJson(content[0].text)) text = content[0].text;
     else {
       const message = Array.isArray(content) && content.length === 1 && content[0].type === 'text' ? content[0].text : typeof response === 'string' ? response : JSON.stringify(response);
-      const paths = [...new Set([...message.matchAll(/(?:\/[^\s"'`<>]+\/tool-results\/[^\s"'`<>]+\.txt)/g)].map((m) => m[0]))];
-      if (paths.length !== 1) fail(paths.length ? 'AMBIGUOUS_SAVED_FILE' : 'UNRECOGNISED_RESULT', 'expected one distinct saved result path in this call response');
-      const candidate = paths[0];
       const transcript = input.transcript_path;
       if (!transcript || !input.session_id || !path.isAbsolute(transcript)) fail('SESSION_PATH', 'hook has no session transcript path');
       const parent = path.dirname(transcript);
-      const expected = [path.join(parent, input.session_id, 'tool-results'), path.join(parent, 'tool-results')];
-      if (!expected.includes(path.dirname(candidate))) fail('FOREIGN_SAVED_FILE', 'result is not in this session tool-results directory');
+      // Look only for this session's documented tool-results directory, spelled natively, so a home
+      // directory with spaces or a Windows path is found and nothing outside the session can match.
+      const paths = new Set();
+      for (const dir of [path.join(parent, input.session_id, 'tool-results'), path.join(parent, 'tool-results')]) {
+        const prefix = dir + path.sep;
+        for (let at = message.indexOf(prefix); at !== -1; at = message.indexOf(prefix, at + 1)) {
+          const name = /^[^\s"'`<>\\/]+\.txt/.exec(message.slice(at + prefix.length));
+          if (name) paths.add(prefix + name[0]);
+        }
+      }
+      if (paths.size !== 1) fail(paths.size ? 'AMBIGUOUS_SAVED_FILE' : message.includes('tool-results') ? 'FOREIGN_SAVED_FILE' : 'UNRECOGNISED_RESULT', 'expected exactly one saved result path in this session tool-results directory');
+      const [candidate] = paths;
       const toolSlug = input.tool_name.slice('mcp__'.length).replace('__', '-');
       if (!path.basename(candidate).startsWith(`mcp-${toolSlug}-`)) fail('FOREIGN_SAVED_FILE', 'saved filename does not identify this tool');
       const stat = await fs.lstat(candidate).catch((error) => { if (error.code === 'ENOENT') fail('MISSING_SAVED_FILE', candidate); throw error; });
@@ -162,10 +169,11 @@ export async function verify(id) {
   if (profit !== expectedProfit) fail('PROFIT_MISMATCH', `${profit} cents vs OO ${expectedProfit} cents`);
   const lines = [columns.join(','), ...economic.map(row)];
   if (!economic.length) fail('EMPTY_BLOCK', 'import_csv cannot import an empty trade log');
+  // verify is a pure function of the saved responses, so a re-run (after success or an interruption) rewrites both files.
   const csvPath = path.join(dir, 'tradelog.csv');
-  await fs.writeFile(csvPath, `${lines.join('\n')}\n`, { flag: 'wx', mode: 0o600 });
+  await fs.writeFile(csvPath, `${lines.join('\n')}\n`, { mode: 0o600 });
   const summary = { id, csvPath, source: { [sourceKey]: sourceId }, trades: economic.length, ignoredRows: all.length - economic.length, openAtEnd: result.numberOfOpenTrades, ooProfit: (expectedProfit / 100).toFixed(2), csvPlBasis: 'net_includes_fees', reconciliation: 'count and net profit match OO to the cent' };
-  await saveJson(path.join(dir, 'verification.json'), summary);
+  await fs.writeFile(path.join(dir, 'verification.json'), `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });
   return summary;
 }
 export async function list() {
