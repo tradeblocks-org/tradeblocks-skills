@@ -22,11 +22,19 @@ Call OO `get_optimization_results` with the completed `optimizationId`, ranking 
 
 ### 2. Run OO scratch candidates, never save
 
-Read the base via OO `get_saved_backtest` and carry its complete `parameters` into each OO `run_backtest` call, changing **only** the selected swept coordinates in memory. Preserve all other settings, including leg identities and date range. Never call any OO `save_*`, `replace_*` or `edit_*` tool. Record each returned `runId`; do not treat `run_backtest` acceptance as completion. Poll `get_backtest_status` by runId, observing `pollAfterMs` and the status note until complete. Stop and report failed or cancelled runs; do not fabricate results or retry as though the run had succeeded.
+Read the base via OO `get_saved_backtest` and carry its complete `parameters` into each OO `run_backtest` call, changing **only** the selected swept coordinates in memory. Preserve all other settings, including leg identities and date range. Never call any OO `save_*`, `replace_*` or `edit_*` tool. Record each returned `runId`; do not treat `run_backtest` acceptance as completion. Poll `get_backtest_status` by runId, observing `pollAfterMs` and the status note until complete. Wait between polls in the foreground (for example a foreground `sleep`), never as a background task: the workflow must still be running when the run completes. Stop and report failed or cancelled runs; do not fabricate results or retry as though the run had succeeded.
 
 ### 3. Capture and verify each run separately
 
-For each complete run, follow [oo-capture steps 1–3](../oo-capture/SKILL.md): arm a separate capture, call OO `get_backtest_results` **by that runId** for the identity-bound headline, then unfiltered contiguous `get_trade_log` pages **by the same runId**, stop, and `verify` before moving on. Keep both returned capture IDs and verification summaries. Do not use a saved-backtest headline in a scratch-run capture. If either verification refuses, stop; no comparison import. The separate run's verified OO count, net P/L, ignored rows and open-at-end count remain its own provenance.
+For each complete run, follow [oo-capture steps 1–3](../oo-capture/SKILL.md) for consent, paging and the verifier's checks, using these exact commands (this skill's copy carries the session ID; do not look it up elsewhere):
+
+```bash
+node "${CLAUDE_SKILL_DIR}/../../scripts/oo-capture.mjs" start "${CLAUDE_SESSION_ID}"
+node "${CLAUDE_SKILL_DIR}/../../scripts/oo-capture.mjs" stop "${CLAUDE_SESSION_ID}"
+node "${CLAUDE_SKILL_DIR}/../../scripts/oo-capture.mjs" verify <capture-id>
+```
+
+Arm a separate capture per run, call OO `get_backtest_results` **by that runId** for the identity-bound headline, then unfiltered contiguous `get_trade_log` pages **by the same runId**, stop, and `verify` before arming the next. Keep both returned capture IDs and verification summaries. Do not use a saved-backtest headline in a scratch-run capture. If either verification refuses, stop; no comparison import. The separate run's verified OO count, net P/L, ignored rows and open-at-end count remain its own provenance.
 
 ### 4. Compose and import one trade-only block
 
