@@ -94,13 +94,17 @@ test('OO null fees mean no fee charged, preserve reported net profit', async () 
   assert.match(csv, /,19\.00,net_includes_fees,2,/);
   assert.match(csv, /,0\.00,0\.00\n/);
 });
-test('absent OO fee field refuses publication', async () => {
+test('omitted OO fee field means no fee charged, as OO omits null properties', async () => {
+  // Observed on OO staging 2026-09-28: every trade of an all-expired 0DTE backtest omits closingFees
+  // (no closing order, so no closing fee), and no trade-log property is ever sent as an explicit null.
   const item = trade(19);
   delete item.closingFees;
   const { id } = await capture({ rows: [item] });
-  await assert.rejects(verify(id), /UNKNOWN_FEES:/);
-  await assert.rejects(fs.access(path.join(home, 'tradeblocks', 'oo-captures', id, 'tradelog.csv')));
+  const csv = await fs.readFile((await verify(id)).csvPath, 'utf8');
+  assert.match(csv, /,19\.00,net_includes_fees,2,/);
+  assert.match(csv, /,1\.25,0\.00\n/);
 });
+refusal('non-numeric OO fee', { rows: [trade(19, { closingFees: '1.25' })] }, 'UNKNOWN_FEES');
 refusal('filter key present but null', { pageMutator: (args) => { args.outcome = null; } }, 'FILTERED_LOG');
 test('expired saved file is a recorded named failure, not publication', async () => {
   const session = `session_${serial++}`;
