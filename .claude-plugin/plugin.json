@@ -1,12 +1,12 @@
 {
   "name": "tradeblocks",
-  "description": "AI-assisted analysis for Option Omega backtests and options trading portfolios. Strategy health checks, exit optimization, regime analysis, walk-forward testing, and more. Includes MCP server with 50+ tools.",
+  "description": "AI-assisted analysis for Option Omega backtests and options trading portfolios. Strategy health checks, exit optimization, regime analysis, walk-forward testing, and more. Requires the TradeBlocks MCP server, installed separately.",
   "version": "1.0.0",
   "author": {
     "name": "David Romeo",
     "email": "davidmromeo@gmail.com"
   },
-  "homepage": "https://github.com/davidromeo/tradeblocks",
-  "repository": "https://github.com/davidromeo/tradeblocks-skills",
+  "homepage": "https://github.com/tradeblocks-org/tradeblocks",
+  "repository": "https://github.com/tradeblocks-org/tradeblocks-skills",
   "license": "MIT"
 }
