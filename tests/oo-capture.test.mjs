@@ -138,6 +138,96 @@ test('a strategy name with a line break is refused before any CSV is written', a
   await assert.rejects(verify(fromOo.id), /^Error: INVALID_STRATEGY: OO trade strategy name contains a line break/);
   assert.equal((await verify(fromOo.id, 'Iron Fly')).strategy.names[0].name, 'Iron Fly');
 });
+
+async function portfolioCapture({ names = ['Iron Fly', 'Iron Fly', 'Quiet'], rows, results, headline = {}, mutatePage, mutateCurve, duplicatePage = false } = {}) {
+  const session = `session_${serial++}`;
+  const { id } = await start(session);
+  const source = { savedPortfolioId: 'portfolio-1' };
+  const members = names.map((name, i) => ({ savedBacktestId: `member-${i + 1}`, name }));
+  const trades = rows ?? [trade(12.25, { strategyId: 'member-1' }), trade(-2, { strategyId: 'member-2' }),
+    trade(900, { strategyId: 'member-1', isIgnored: true })];
+  const strategyResults = results ?? members.map((member, i) => ({ savedBacktestId: member.savedBacktestId,
+    name: member.name, numberOfTrades: i < 2 ? 1 : 0, profit: [12.25, -2, 0][i] ?? 0 }));
+  await hook(event(session, 'get_saved_portfolio', source, { id: 'portfolio-1',
+    settings: { rangeStart: '2026-01-02', rangeEnd: '2026-01-05' }, strategies: members,
+    result: { numberOfTrades: 2, numberOfOpenTrades: 1, profit: 10.25, strategyResults, ...headline } }));
+  const args = { ...source, ...sortFixture(), offset: 0 };
+  const page = { offset: 0, totalCount: trades.length, items: trades, sortedBy: 'opened', direction: 'asc', nextOffset: null };
+  mutatePage?.(args, page);
+  await hook(event(session, 'get_trade_log', args, page));
+  if (duplicatePage) await hook(event(session, 'get_trade_log', args, page));
+  const curveArgs = { parameters: { ...source, seriesStart: '2026-01-02', seriesEnd: '2026-01-05' } };
+  const curveData = { seriesStart: '2026-01-02', seriesEnd: '2026-01-05', pointColumns,
+    points: [['2026-01-02', 1000, 1000, 1000, 1000, 0, 0, 0],
+      ['2026-01-05', 990, 1000, 1000, 1000, -10, -1, -1]] };
+  if (mutateCurve !== 'missing') {
+    mutateCurve?.(curveArgs, curveData);
+    await hook(event(session, 'get_equity_curve', curveArgs, curveData));
+  }
+  await stop(session);
+  return id;
+}
+function sortFixture() { return { sortBy: 'opened', direction: 'asc', limit: 100 }; }
+
+test('portfolio labels preserve member identity, including duplicate and case-only names, and report zero members', async () => {
+  const id = await portfolioCapture({ names: ['Iron Fly', 'iron fly', 'Quiet'] });
+  const verified = await verify(id);
+  const [header, ...rows] = parseCsv(await fs.readFile(verified.csvPath, 'utf8'));
+  const strategy = header.indexOf('Strategy'), pl = header.indexOf('P/L');
+  assert.deepEqual(verified.members.map(({ savedBacktestId, name, label, trades, ooProfit }) =>
+    ({ savedBacktestId, name, label, trades, ooProfit })), [
+    { savedBacktestId: 'member-1', name: 'Iron Fly', label: 'Iron Fly [member-1]', trades: 1, ooProfit: '12.25' },
+    { savedBacktestId: 'member-2', name: 'iron fly', label: 'iron fly [member-2]', trades: 1, ooProfit: '-2.00' },
+    { savedBacktestId: 'member-3', name: 'Quiet', label: 'Quiet', trades: 0, ooProfit: '0.00' },
+  ]);
+  assert.deepEqual(rows.map((fields) => [fields[strategy], fields[pl]]), [['Iron Fly [member-1]', '12.25'], ['iron fly [member-2]', '-2.00']]);
+  assert.equal(verified.ignoredRows, 1);
+  assert.equal(verified.curve.scope, 'whole-book');
+  assert.equal(verified.curve.rows, 2);
+  assert.equal(verified.ooProfit, '10.25');
+  const provenance = JSON.parse(await fs.readFile(path.join(verified.directory, 'verification.json'), 'utf8'));
+  assert.deepEqual(provenance.members, verified.members);
+});
+
+test('exact duplicate names get distinct stable labels', async () => {
+  const result = await verify(await portfolioCapture());
+  assert.deepEqual(result.members.map(({ label }) => label), ['Iron Fly [member-1]', 'Iron Fly [member-2]', 'Quiet']);
+});
+
+test('portfolio refuses a single chosen name rather than merging member labels', async () => {
+  const id = await portfolioCapture();
+  await assert.rejects(verify(id, 'Live Strategy'), /^Error: PORTFOLIO_STRATEGY_NAME:/);
+  await assert.rejects(fs.access(path.join(home, 'tradeblocks', 'oo-captures', id, 'tradelog.csv')));
+});
+
+test('portfolio member name with a line break refuses before CSV publication even for a zero-trade member', async () => {
+  const id = await portfolioCapture({ names: ['Iron Fly', 'Iron Fly', 'Quiet\nSecond line'] });
+  await assert.rejects(verify(id), /^Error: INVALID_STRATEGY: OO portfolio member member-3 name contains a line break/);
+  await assert.rejects(fs.access(path.join(home, 'tradeblocks', 'oo-captures', id, 'tradelog.csv')));
+});
+
+for (const [name, setup, reason] of [
+  ['missing member ID', { rows: [trade(12.25), trade(-2, { strategyId: 'member-2' })] }, 'MISSING_MEMBER_ID'],
+  ['unknown member ID', { rows: [trade(12.25, { strategyId: 'foreign' }), trade(-2, { strategyId: 'member-2' })] }, 'UNKNOWN_MEMBER_ID'],
+  ['member count mismatch', { results: [{ savedBacktestId: 'member-1', name: 'Iron Fly', numberOfTrades: 2, profit: 12.25 },
+    { savedBacktestId: 'member-2', name: 'Iron Fly', numberOfTrades: 0, profit: -2 },
+    { savedBacktestId: 'member-3', name: 'Quiet', numberOfTrades: 0, profit: 0 }] }, 'MEMBER_COUNT_MISMATCH'],
+  ['member profit mismatch', { results: [{ savedBacktestId: 'member-1', name: 'Iron Fly', numberOfTrades: 1, profit: 12.24 },
+    { savedBacktestId: 'member-2', name: 'Iron Fly', numberOfTrades: 1, profit: -1.99 },
+    { savedBacktestId: 'member-3', name: 'Quiet', numberOfTrades: 0, profit: 0 }] }, 'MEMBER_PROFIT_MISMATCH'],
+  ['missing member results', { headline: { strategyResults: null } }, 'MISSING_STRATEGY_RESULTS'],
+  ['foreign page', { mutatePage: (args) => { args.savedPortfolioId = 'foreign'; } }, 'SOURCE_MISMATCH'],
+  ['missing page', { mutatePage: (args, data) => { args.offset = 1; data.offset = 1; } }, 'MISSING_PAGE'],
+  ['duplicate page', { duplicatePage: true }, 'DUPLICATE_PAGE'],
+  ['foreign curve', { mutateCurve: (args) => { args.parameters.savedPortfolioId = 'foreign'; } }, 'CURVE_SOURCE_MISMATCH'],
+  ['missing curve', { mutateCurve: 'missing' }, 'MISSING_CURVE'],
+]) {
+  test(`portfolio refuses ${name}`, async () => {
+    const id = await portfolioCapture(setup);
+    await assert.rejects(verify(id), (error) => error.message.startsWith(`${reason}:`));
+    await assert.rejects(fs.access(path.join(home, 'tradeblocks', 'oo-captures', id, 'tradelog.csv')));
+  });
+}
 test('hook outside start and after stop saves nothing', async () => {
   const session = `session_${serial++}`;
   const input = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1' }, { items: [] });
