@@ -27,10 +27,14 @@ Use only OO's own reported source `parameters.rangeStart`/`rangeEnd` for the cur
 
 ## 3. Stop and verify BEFORE import
 
+Before verification, tell the user the default Strategy: OO's per-trade strategy when supplied, otherwise the saved backtest's headline name; for a nameless run, an empty Strategy makes TradeBlocks use the new block's name. Ask whether their live reporting log uses a different strategy name. Only if they choose one, pass it explicitly (this replaces any OO per-trade names, which remain in the verification provenance):
+
 ```bash
 node "${CLAUDE_SKILL_DIR}/../../scripts/oo-capture.mjs" stop "${CLAUDE_SESSION_ID}"
-node "${CLAUDE_SKILL_DIR}/../../scripts/oo-capture.mjs" verify <capture-id>
+node "${CLAUDE_SKILL_DIR}/../../scripts/oo-capture.mjs" verify <capture-id> [--strategy "<chosen name>"]
 ```
+
+Omit the bracketed `--strategy` argument when no name is chosen. If the returned `strategy.overriddenOoNames` is nonempty, **tell the user** which OO names were replaced by the chosen name. A repeat `verify` without `--strategy` resets the CSV and verification to OO/default names; always import the exact CSV returned by the last verification.
 
 Stop even if OO errors or a call is interrupted; if verification refuses, report its named failure and do not import. `verify` requires precisely one identity-bound headline, no trade filters, contiguous offsets from zero, fixed sort, stable total, a terminal page, and OO-matching non-ignored count and net profit to the cent. For a ranged source it also requires complete NYSE trading-session coverage across the OO range (weekends and full-day holidays excluded), window source/server identity, dates, cent-valued economics, daily P/L and previous-close continuity, and identical shared rows if windows overlap. It never synthesizes missing days. It writes `tradelog.csv` and `dailylog.csv` only after these checks pass. A source without an OO-reported range writes trade-only and names why; saved backtests require a range and windows. Saved-file failures, missing provenance, non-numeric fee fields, malformed dates/amounts, duplicate or missing pages all refuse publication. OO defines `null` opening/closing fees as **no fee charged** and omits null properties, so a `null` or absent fee writes as `0.00`; the trade CSV represents OO `profit` as `net_includes_fees` (fees are recorded but never deducted again). Premiums/leg prices are dollars per one contract and whole-dollar premiums have `.00` decimal precision.
 
@@ -40,7 +44,7 @@ Before importing inspect the **running** TradeBlocks `import_csv` input schema: 
 
 An import receipt alone is not proof of the parsed block: use `get_block_info` for `tradeCount` and `dailyLogCount` and `run_sql` against `trades.trade_data` for `COUNT(*)`, `SUM(pl)`, `pl_basis` and `premium` for the returned block ID. Compare trade count/net profit and a whole-dollar per-contract premium with verification and OO. For a paired import also **require `dailyLog.recordCount` in the import receipt** and `get_block_info.dailyLogCount` both equal `verify.curve.rows`. If either is missing or differs, report failure, never paired success. For a block with the paired daily log, run unfiltered `get_statistics`: label its daily-log max drawdown \"TradeBlocks analysis over OO's marked daily curve\" and report it **apart from** trade-realized drawdown. Never present TradeBlocks CAGR, Calmar, Sharpe, or Sortino as OO's headline figures; `calmarRatio` mixes trade CAGR with marked drawdown. For trade-only blocks, distinguish trade-realized measures from unavailable OO marked-equity metrics. If any reconciliation disagrees, tell the user and do not claim success.
 
-Report verified economic trades, ignored rows, OO open-at-end trades (not in the log), daily sessions when available, count/profit reconciliation, CSV/raw JSON directory and new block ID. Do not label TradeBlocks-recomputed statistics as OO's own figures.
+Report verified economic trades, ignored rows, OO open-at-end trades (not in the log), daily sessions when available, count/profit reconciliation, the written Strategy name(s) and source(s) from `verify.strategy.names` (including the blank→block-name fallback), any OO names explicitly overridden, CSV/raw JSON directory and new block ID. Do not label TradeBlocks-recomputed statistics as OO's own figures.
 
 ## See and remove saved captures
 
