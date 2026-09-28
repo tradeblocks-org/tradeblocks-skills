@@ -65,10 +65,12 @@ test('a link destination with balanced or escaped parentheses resolves in full',
   assert.equal(result.status, 0, result.stderr);
 });
 
-test('link-like text inside a title is not checked as a link', async () => {
+test('text that is not a CommonMark link is not checked as one', async () => {
   const result = await check({
     'exists.md': '# here\n',
-    'README.md': '[doc](exists.md "See [other](missing.md)")\n',
+    'README.md':
+      '[doc](exists.md "See [other](missing.md)")\n' + // link-like text inside a title
+      '[note](<missing.md>"no space before title")\n', // a title needs separating whitespace
   });
   assert.equal(result.status, 0, result.stderr);
 });

@@ -41,8 +41,9 @@ function destination(line, i) {
     }
     if (depth > 0) return null;
   }
+  const afterTarget = i;
   while (line[i] === " " || line[i] === "\t") i++;
-  const close = titleClose[line[i]];
+  const close = i > afterTarget && titleClose[line[i]]; // a title needs separating whitespace
   if (close) {
     for (i++; i < line.length && line[i] !== close; i++) if (line[i] === "\\") i++;
     if (i >= line.length) return null;
