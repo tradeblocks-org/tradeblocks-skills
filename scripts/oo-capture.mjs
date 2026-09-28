@@ -98,11 +98,18 @@ export async function stop(session) {
   const armed = await marker(session);
   if (!armed) fail('NOT_ARMED', 'capture has not started');
   const dir = capturePath(armed.id);
+  const file = path.join(dir, 'manifest.json');
+  // Record the stop before disarming: an interrupted stop leaves the marker, so a retry finishes it.
+  const state = await json(file);
+  if (state.status !== 'stopped') {
+    state.status = 'stopped';
+    state.stoppedAt = new Date().toISOString();
+    // Replace the manifest whole, so an interruption mid-write cannot leave it unreadable.
+    const temp = `${file}.${randomUUID()}.tmp`;
+    await saveJson(temp, state);
+    await fs.rename(temp, file);
+  }
   await fs.unlink(activePath(session));
-  const state = await json(path.join(dir, 'manifest.json'));
-  state.status = 'stopped';
-  state.stoppedAt = new Date().toISOString();
-  await fs.writeFile(path.join(dir, 'manifest.json'), `${JSON.stringify(state, null, 2)}\n`);
   return { id: armed.id, directory: dir, status: 'stopped' };
 }
 function money(value, name) { if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value * 100 - Math.round(value * 100)) > 1e-6) fail('INVALID_ECONOMICS', `${name} must be a finite cent amount`); return Math.round(value * 100); }

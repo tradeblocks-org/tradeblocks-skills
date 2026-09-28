@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { spawnSync } from 'node:child_process';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
 
 const home = await fs.mkdtemp(path.join(os.tmpdir(), 'oo-capture-test-'));
 process.env.XDG_DATA_HOME = home;
@@ -236,6 +237,34 @@ test('hook outside start and after stop saves nothing', async () => {
   await stop(session);
   assert.equal(await hook(input), null);
   assert.deepEqual(await fs.readdir(path.join(home, 'tradeblocks', 'oo-captures', id, 'responses')), []);
+});
+test('stop interrupted between its manifest and marker steps is finished by a retry, then verifies', async () => {
+  const { id, session } = await capture({ stopCapture: false });
+  const dir = path.join(home, 'tradeblocks', 'oo-captures', id);
+  const manifest = path.join(dir, 'manifest.json');
+  const marker = path.join(home, 'tradeblocks', 'oo-captures', 'active', `${session}.json`);
+  // Crash stop at its second durable step, whichever order it takes: the first write to the manifest
+  // or the active marker succeeds, and the next one to either is never made.
+  const fsp = createRequire(import.meta.url)('node:fs/promises');
+  const original = { writeFile: fsp.writeFile, rename: fsp.rename, unlink: fsp.unlink };
+  let steps = 0;
+  const step = (name, target) => async (...args) => {
+    if (target(...args) === manifest || target(...args) === marker) {
+      if (steps++ === 1) throw new Error('INTERRUPTED: stop killed between its two steps');
+    }
+    return original[name](...args);
+  };
+  fsp.writeFile = step('writeFile', (file) => file);
+  fsp.rename = step('rename', (_, to) => to);
+  fsp.unlink = step('unlink', (file) => file);
+  syncBuiltinESMExports();
+  try { await assert.rejects(stop(session), /^Error: INTERRUPTED:/); }
+  finally { Object.assign(fsp, original); syncBuiltinESMExports(); }
+  assert.equal(steps, 2);
+  assert.deepEqual(await stop(session), { id, directory: dir, status: 'stopped' });
+  await assert.rejects(fs.access(marker));
+  assert.equal((await verify(id)).trades, 1);
+  await assert.rejects(stop(session), /^Error: NOT_ARMED:/);
 });
 refusal('missing page', { pages: [Array.from({ length: 100 }, () => trade(0)), [trade(19)]], pageMutator: (args, data, i) => { if (i === 1) { args.offset = 102; data.offset = 102; } }, headline: { numberOfTrades: 101 } }, 'MISSING_PAGE');
 refusal('duplicate page', { pages: [Array.from({ length: 100 }, () => trade(0)), [trade(19)]], pageMutator: (args, data, i) => { if (i === 1) { args.offset = 0; data.offset = 0; } }, headline: { numberOfTrades: 101 } }, 'DUPLICATE_PAGE');
