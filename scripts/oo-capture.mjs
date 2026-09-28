@@ -115,7 +115,7 @@ function calendarDate(text) {
   const date = new Date(`${text}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
 }
-function row(trade) {
+function row(trade, strategy) {
   if (!calendarDate(trade.dateOpened) || !calendarDate(trade.dateClosed)) fail('INVALID_TRADE', 'economic trade needs valid open and close dates');
   if (!Number.isInteger(trade.numberOfContracts) || trade.numberOfContracts < 1) fail('INVALID_TRADE', 'numberOfContracts must be positive integer');
   if (!Array.isArray(trade.legs)) fail('INVALID_TRADE', 'legs must be an array');
@@ -123,7 +123,7 @@ function row(trade) {
   if ([trade.openingFees, trade.closingFees].some((fee) => fee != null && (typeof fee !== 'number' || !Number.isFinite(fee)))) fail('UNKNOWN_FEES', 'OO fee fields must be numbers, null or omitted (no fee charged)');
   for (const leg of trade.legs) dollars(leg.pricePerContract, 'leg pricePerContract');
   const legs = trade.legs.map((leg) => `${leg.buySell} ${leg.numberOfContracts} ${leg.expiration ?? ''} ${leg.strike} ${leg.optionType} @ ${dollars(leg.pricePerContract, 'leg pricePerContract')}`).join('; ');
-  const fields = [trade.dateOpened, trade.timeOpened, trade.openingUnderlyingPrice, legs, dollars(trade.premiumPerContract, 'premiumPerContract'), trade.closingUnderlyingPrice, trade.dateClosed, trade.timeClosed, dollars(trade.averageClosingCostPerContract, 'averageClosingCostPerContract'), trade.reasonClosed, dollars(trade.profit, 'profit'), 'net_includes_fees', trade.numberOfContracts, trade.fundsAtClose, trade.buyingPowerRequired, trade.strategyName, dollars(trade.openingFees ?? 0, 'openingFees'), dollars(trade.closingFees ?? 0, 'closingFees')];
+  const fields = [trade.dateOpened, trade.timeOpened, trade.openingUnderlyingPrice, legs, dollars(trade.premiumPerContract, 'premiumPerContract'), trade.closingUnderlyingPrice, trade.dateClosed, trade.timeClosed, dollars(trade.averageClosingCostPerContract, 'averageClosingCostPerContract'), trade.reasonClosed, dollars(trade.profit, 'profit'), 'net_includes_fees', trade.numberOfContracts, trade.fundsAtClose, trade.buyingPowerRequired, strategy, dollars(trade.openingFees ?? 0, 'openingFees'), dollars(trade.closingFees ?? 0, 'closingFees')];
   return fields.map(csv).join(',');
 }
 const curveColumns = ['date', 'netLiquidity', 'startingLiquidity', 'realizedFunds', 'tradingFunds', 'profitLoss', 'profitLossPercentage', 'drawdownPercentage'];
@@ -253,7 +253,7 @@ export async function verify(id) {
   const profit = economic.reduce((sum, trade) => sum + money(trade.profit, 'trade profit'), 0);
   if (profit !== expectedProfit) fail('PROFIT_MISMATCH', `${profit} cents vs OO ${expectedProfit} cents`);
   const curve = hasRange ? curveRows(records, sourceKey, sourceId, server, rangeStart, rangeEnd) : null;
-  const lines = [columns.join(','), ...economic.map(row)];
+  const lines = [columns.join(','), ...economic.map((trade) => row(trade, trade.strategyName))];
   if (!economic.length) fail('EMPTY_BLOCK', 'import_csv cannot import an empty trade log');
   // verify is a pure function of the saved responses, so a re-run (after success or an interruption) rewrites both files.
   const csvPath = path.join(dir, 'tradelog.csv');
@@ -263,6 +263,49 @@ export async function verify(id) {
   const summary = { id, csvPath, source: { [sourceKey]: sourceId }, trades: economic.length, ignoredRows: all.length - economic.length, openAtEnd: result.numberOfOpenTrades, ooProfit: (expectedProfit / 100).toFixed(2), csvPlBasis: 'net_includes_fees', reconciliation: 'count and net profit match OO to the cent', dailyLogPath, curve: curve?.summary ?? null, curveMissingReason: curve ? null : 'OO headline reports no source date range' };
   await fs.writeFile(path.join(dir, 'verification.json'), `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });
   return summary;
+}
+// Reverify each source before composing; the response files, not a prior summary, establish the run and its economics.
+async function combinedArm(id, label) {
+  const dir = capturePath(id);
+  await captureJson(path.join(dir, 'manifest.json'));
+  if (!await fs.access(path.join(dir, 'verification.json')).then(() => true, () => false)) fail('UNVERIFIED_CAPTURE', `${id} must be verified first`);
+  const summary = await verify(id);
+  if (!summary.source.runId) fail('NOT_RUN_CAPTURE', 'comparison requires a runId capture');
+  const names = await fs.readdir(path.join(dir, 'responses'));
+  const events = await Promise.all(names.filter((name) => name.endsWith('.json')).map((name) => captureJson(path.join(dir, 'responses', name))));
+  const headline = events.find((entry) => entry.toolName.endsWith('__get_backtest_results'));
+  const server = headline.toolName.slice(0, headline.toolName.lastIndexOf('__'));
+  const pages = events.filter((entry) => entry.toolName.endsWith('__get_trade_log')).sort((a, b) => a.toolInput.offset - b.toolInput.offset);
+  const trades = (await Promise.all(pages.map((page) => captureJson(path.join(dir, 'responses', page.rawFile)))))
+    .flatMap((page) => page.items).filter((trade) => trade.isIgnored !== true);
+  const profit = trades.reduce((total, trade) => total + money(trade.profit, 'trade profit'), 0);
+  if (trades.length !== summary.trades || profit !== money(Number(summary.ooProfit), 'verified profit')) fail('ARM_MISMATCH', `${label} does not reconcile`);
+  // The arms must be alternatives on one basis. OO run headlines report starting funds; a date range only when OO supplies one.
+  const result = await captureJson(path.join(dir, 'responses', headline.rawFile));
+  const basis = { startingFunds: result.startingFunds ?? null, rangeStart: result.parameters?.rangeStart ?? null, rangeEnd: result.parameters?.rangeEnd ?? null };
+  return { captureId: id, runId: summary.source.runId, label, verification: summary, server, basis, lines: trades.map((trade) => row(trade, label)) };
+}
+export async function combine(bestId, bestLabel, centreId, centreLabel) {
+  if ([bestLabel, centreLabel].some((label) => typeof label !== 'string' || !label.trim())) fail('INVALID_LABEL', 'both strategy labels must be nonempty');
+  if (bestLabel.toLowerCase() === centreLabel.toLowerCase()) fail('LABEL_COLLISION', 'strategy labels must differ ignoring case');
+  const arms = [await combinedArm(bestId, bestLabel), await combinedArm(centreId, centreLabel)];
+  if (arms[0].runId === arms[1].runId) fail('DUPLICATE_RUN', 'both captures refer to the same runId');
+  if (arms[0].server !== arms[1].server) fail('SERVER_MISMATCH', 'captures came from different OO servers');
+  for (const key of ['startingFunds', 'rangeStart', 'rangeEnd']) {
+    if (arms[0].basis[key] !== arms[1].basis[key]) fail('BASIS_MISMATCH', `arms differ on OO-reported ${key}: ${arms[0].basis[key]} vs ${arms[1].basis[key]}`);
+  }
+  const basis = { ...arms[0].basis, rangeEvidence: arms[0].basis.rangeStart === null ? 'OO run headlines report no date range; equal ranges rest on both runs using the base backtest parameters' : 'equal OO-reported date range' };
+  const id = randomUUID();
+  const directory = capturePath(id);
+  const csvPath = path.join(directory, 'comparison.csv');
+  const provenance = arms.map(({ captureId, runId, label, verification }) => ({ captureId, runId, label, verification }));
+  await fs.mkdir(directory, { mode: 0o700 });
+  try {
+    await fs.writeFile(csvPath, `${[columns.join(','), ...arms.flatMap((arm) => arm.lines)].join('\n')}\n`, { flag: 'wx', mode: 0o600 });
+    await saveJson(path.join(directory, 'manifest.json'), { id, status: 'stopped', kind: 'comparison', startedAt: new Date().toISOString(), server: arms[0].server, arms: provenance });
+    await saveJson(path.join(directory, 'verification.json'), { id, csvPath, csvPlBasis: 'net_includes_fees', arms: provenance, basis, reconciliation: 'each strategy count and net profit match its verified OO run to the cent' });
+  } catch (error) { await fs.rm(directory, { recursive: true }); throw error; }
+  return { id, directory, csvPath, basis, arms: provenance.map(({ captureId, runId, label, verification }) => ({ captureId, runId, label, trades: verification.trades, ooProfit: verification.ooProfit })) };
 }
 export async function list() {
   try {
@@ -276,16 +319,16 @@ export async function list() {
 export async function remove(id) {
   const dir = capturePath(id);
   const state = await json(path.join(dir, 'manifest.json'));
-  if (await marker(state.session)?.then((armed) => armed?.id === id)) fail('ARMED_CAPTURE', 'stop this capture before deletion');
+  if (state.session && await marker(state.session)?.then((armed) => armed?.id === id)) fail('ARMED_CAPTURE', 'stop this capture before deletion');
   await fs.rm(dir, { recursive: true });
   return { deleted: id, note: 'Imported TradeBlocks blocks are separate; delete one with its normal TradeBlocks block action.' };
 }
 // Compare native real paths: a URL pathname is percent-escaped and a symlinked install differs from its target.
 const cli = process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
 if (cli) {
-  const [command, arg] = process.argv.slice(2);
+  const [command, ...args] = process.argv.slice(2);
   try {
-    const result = command === 'start' ? await start(arg) : command === 'stop' ? await stop(arg) : command === 'verify' ? await verify(arg) : command === 'list' ? await list() : command === 'delete' ? await remove(arg) : fail('COMMAND', 'use start|stop|verify|list|delete');
+    const result = command === 'start' ? await start(args[0]) : command === 'stop' ? await stop(args[0]) : command === 'verify' ? await verify(args[0]) : command === 'combine' ? await combine(...args) : command === 'list' ? await list() : command === 'delete' ? await remove(args[0]) : fail('COMMAND', 'use start|stop|verify|combine|list|delete');
     console.log(JSON.stringify(result));
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

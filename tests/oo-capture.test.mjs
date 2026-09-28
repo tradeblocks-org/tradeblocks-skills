@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 
 const home = await fs.mkdtemp(path.join(os.tmpdir(), 'oo-capture-test-'));
 process.env.XDG_DATA_HOME = home;
-const { start, stop, hook, verify, list, remove } = await import('../scripts/oo-capture.mjs');
+const { start, stop, hook, verify, combine, list, remove } = await import('../scripts/oo-capture.mjs');
 after(async () => fs.rm(home, { recursive: true, force: true }));
 let serial = 0;
 function trade(n, overrides = {}) {
@@ -69,6 +69,12 @@ test('verified OO economic log excludes ignored profits, keeps net fees, decimal
   await remove(id);
   assert.equal((await list()).some((entry) => entry.id === id), false);
   await assert.rejects(fs.access(result.dailyLogPath));
+});
+test('verified single-run CSV keeps each trade\'s OO strategy name in the Strategy column', async () => {
+  const { id } = await capture({ rows: [trade(19, { strategyName: 'Iron Fly' })] });
+  const result = await verify(id);
+  const [header, line] = (await fs.readFile(result.csvPath, 'utf8')).trim().split('\n');
+  assert.equal(line.split(',')[header.split(',').indexOf('Strategy')], 'Iron Fly');
 });
 test('hook outside start and after stop saves nothing', async () => {
   const session = `session_${serial++}`;
@@ -297,4 +303,83 @@ test('curve hook retains inline and saved-file JSON bytes with arguments', async
   assert.ok(entries.every((entry) => entry.toolInput.parameters.savedBacktestId === 'backtest-1'));
   assert.deepEqual(await Promise.all(entries.map((entry) => fs.readFile(path.join(responseDir, entry.rawFile), 'utf8'))), [text, text]);
   await stop(session);
+});
+
+async function runCapture(runId, profits, server = 'my_oo', headline = {}) {
+  const session = `session_${serial++}`;
+  const { id } = await start(session);
+  const send = (name, args, response) => hook({ ...event(session, name, args, response), tool_name: `mcp__${server}__${name}` });
+  await send('get_backtest_results', { runId }, { numberOfTrades: profits.length, numberOfOpenTrades: 0, profit: profits.reduce((sum, n) => sum + n, 0), ...headline });
+  await send('get_trade_log', { runId, offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' },
+    { offset: 0, totalCount: profits.length, items: profits.map((n) => trade(n)), nextOffset: null, sortedBy: 'opened', direction: 'asc' });
+  await stop(session);
+  return id;
+}
+
+function parseCsv(text) {
+  const records = [];
+  let fields = [], field = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === '"' && quoted && text[i + 1] === '"') { field += '"'; i++; }
+    else if (char === '"') quoted = !quoted;
+    else if (char === ',' && !quoted) { fields.push(field); field = ''; }
+    else if (char === '\n' && !quoted) { fields.push(field); records.push(fields); fields = []; field = ''; }
+    else field += char;
+  }
+  return records;
+}
+
+test('combine publishes one trade-only CSV with each verified run reconciled by its label', async (t) => {
+  const best = await runCapture('run-best', [12.25, -2]);
+  const centre = await runCapture('run-centre', [4.5]);
+  const first = await verify(best);
+  const second = await verify(centre);
+  const invocation = spawnSync(process.execPath, [new URL('../scripts/oo-capture.mjs', import.meta.url).pathname, 'combine', best, 'best, "fast"', centre, 'centre\nslow'], { encoding: 'utf8', env: process.env });
+  assert.equal(invocation.status, 0, invocation.stderr);
+  const result = JSON.parse(invocation.stdout);
+  const text = await fs.readFile(result.csvPath, 'utf8');
+  const [header, ...rows] = parseCsv(text);
+  const strategy = header.indexOf('Strategy'), pl = header.indexOf('P/L');
+  const grouped = Object.groupBy(rows, (fields) => fields[strategy]);
+  const sums = Object.fromEntries(Object.entries(grouped).map(([label, trades]) =>
+    [label, { count: trades.length, cents: trades.reduce((sum, fields) => sum + Math.round(Number(fields[pl]) * 100), 0) }]));
+  assert.deepEqual(sums, { 'best, "fast"': { count: 2, cents: 1025 }, 'centre\nslow': { count: 1, cents: 450 } });
+  t.diagnostic(`CLI fixture per-arm count/net cents: ${JSON.stringify(sums)}`);
+  assert.deepEqual(result.arms.map(({ label, runId, trades, ooProfit }) => [label, runId, trades, ooProfit]),
+    [['best, "fast"', 'run-best', 2, '10.25'], ['centre\nslow', 'run-centre', 1, '4.50']]);
+  const manifest = JSON.parse(await fs.readFile(path.join(result.directory, 'manifest.json'), 'utf8'));
+  assert.equal(manifest.server, 'mcp__my_oo');
+  assert.deepEqual(manifest.arms.map(({ captureId, runId, label, verification }) => [captureId, runId, label, verification.ooProfit]),
+    [[best, 'run-best', 'best, "fast"', first.ooProfit], [centre, 'run-centre', 'centre\nslow', second.ooProfit]]);
+  assert.equal((await list()).find((item) => item.id === result.id).verified, true);
+  assert.equal(await fs.access(path.join(result.directory, 'dailylog.csv')).then(() => true, () => false), false);
+  await remove(result.id);
+  assert.equal((await list()).some((item) => item.id === result.id), false);
+});
+
+test('combine refuses missing, unverified, duplicate run, cross-server, different-basis and colliding labels without publishing', async () => {
+  const a = await runCapture('run-a', [19]);
+  const b = await runCapture('run-b', [8]);
+  const same = await runCapture('run-a', [19]);
+  const foreign = await runCapture('run-c', [8], 'oo_prod');
+  const richer = await runCapture('run-d', [8], 'my_oo', { startingFunds: 700000 });
+  await verify(a);
+  await verify(same);
+  await verify(foreign);
+  await verify(richer);
+  const saved = await capture();
+  await verify(saved.id);
+  const before = (await list()).length;
+  for (const [ids, reason] of [
+    [[a, 'best', '00000000-0000-0000-0000-000000000000', 'centre'], 'MISSING_CAPTURE_FILE'],
+    [[a, 'best', b, 'centre'], 'UNVERIFIED_CAPTURE'],
+    [[a, 'best', same, 'centre'], 'DUPLICATE_RUN'],
+    [[a, 'best', foreign, 'centre'], 'SERVER_MISMATCH'],
+    [[a, 'best', richer, 'centre'], 'BASIS_MISMATCH'],
+    [[a, 'best', same, 'best'], 'LABEL_COLLISION'],
+    [[a, 'best', saved.id, 'centre'], 'NOT_RUN_CAPTURE'],
+    [[a, 'Best', same, 'best'], 'LABEL_COLLISION'],
+  ]) await assert.rejects(combine(...ids), (error) => error.message.startsWith(`${reason}:`));
+  assert.equal((await list()).length, before);
 });

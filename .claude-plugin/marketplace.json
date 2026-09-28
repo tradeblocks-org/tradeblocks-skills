@@ -24,7 +24,8 @@
         "./skills/portfolio",
         "./skills/optimize",
         "./skills/market-data",
-        "./skills/oo-capture"
+        "./skills/oo-capture",
+        "./skills/is-this-optimum-real"
       ]
     }
   ]
