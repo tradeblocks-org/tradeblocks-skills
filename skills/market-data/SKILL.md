@@ -81,14 +81,14 @@ FROM trades.trade_data WHERE block_id = '<block>'
 
 1. Decide which trades you will analyze. `batch_exit_analysis` takes the newest `limit` trades (default 50, max 200) after its optional `strategy`, `date_range`, `min_pl` and `max_pl` filters, so read the legs and dates of exactly that set with `run_sql`, using the same filters and limit:
 ```sql
-SELECT legs, date_opened FROM trades.trade_data
+SELECT legs, date_opened, date_closed FROM trades.trade_data
 WHERE block_id = '<block>'
   -- AND strategy ILIKE '%<strategy>%'  AND date_opened >= '<from>'  AND date_opened <= '<to>'
 ORDER BY date_opened DESC LIMIT 50
 ```
 
-2. Obtain the OCC tickers from every returned trade's legs, then call `fetch_quotes` for them over those trades' dates, e.g. `tickers: ["SPXW260320P06410000"]`, `from: "2026-03-20"`, `to: "2026-03-20"`. Use the actual trade dates and provider coverage; for supported ThetaData bulk fetching, `underlyings: ["SPX"]` can replace `tickers`.
-3. Call `fetch_bars` with `tickers: ["SPX"]`, the same `from` and `to`, and `timespan: "1m"` for underlying spot bars.
+2. Obtain the OCC tickers from every returned trade's legs, then call `fetch_quotes` for them from each trade's `date_opened` through its `date_closed` (a trade held overnight needs every session it was open), e.g. `tickers: ["SPXW260320P06410000"]`, `from: "2026-03-20"`, `to: "2026-03-20"`. Use the actual trade dates and provider coverage; for supported ThetaData bulk fetching, `underlyings: ["SPX"]` can replace `tickers`.
+3. Call `fetch_bars` with `tickers: ["SPX"]`, the same open-through-close `from` and `to`, and `timespan: "1m"` for underlying spot bars.
 4. Run `replay_trade` for one of the prepared trades, or `batch_exit_analysis` with the same `block_id`, filters and `limit` you used in step 1, so it replays only trades whose data is cached. Trades it reports as skipped are missing cached data.
 
 **Note:** Provider option coverage varies. Missing quotes or underlying bars can yield degenerate replay; inspect coverage before trusting a $0 result.
@@ -150,8 +150,8 @@ Run the fetches or imports based on what's missing. Common recipes:
 
 ### Recipe: Replay Data for a Block
 1. Select the trades to analyze with the same filters and `limit` that `batch_exit_analysis` will use (see For Trade Replay, step 1)
-2. `fetch_quotes` for every selected trade's OCC tickers and dates
-3. `fetch_bars` for the underlying with `timespan: "1m"` over the same dates
+2. `fetch_quotes` for every selected trade's OCC tickers from `date_opened` through `date_closed`
+3. `fetch_bars` for the underlying with `timespan: "1m"` over the same open-through-close dates
 4. Run `replay_trade`, or `batch_exit_analysis` with those same filters and `limit`, against the cached quotes and bars
 
 ## Step 4: Verify
