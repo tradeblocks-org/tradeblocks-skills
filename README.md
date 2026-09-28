@@ -17,7 +17,7 @@ Guided workflows that chain TradeBlocks MCP tools together for common analysis t
 | `portfolio` | Portfolio analysis — correlation, diversification, marginal contribution |
 | `risk` | Risk assessment — tail dependence, drawdown attribution, stress scenarios |
 | `compare` | Strategy comparison — side-by-side metrics across blocks |
-| `market-data` | Market data setup — import daily OHLCV, VIX context, and intraday option bars from API, CSV, or DuckDB |
+| `market-data` | Market data setup — fetch daily and intraday bars, VIX context, and option quotes, or import minute bars from CSV or DuckDB |
 | `oo-capture` | Explicitly capture OO trades and its marked daily curve in Claude Code, verify both, then import them as one ordinary TradeBlocks block |
 | `is-this-optimum-real` | Test an OO optimizer winner against a stable-region centre using separately verified scratch runs and a paired TradeBlocks comparison |
 
@@ -73,7 +73,7 @@ Option Omega CSV --> import_csv --> DuckDB --> Tools --> Skills --> Analysis
                                       ^
                                       |
                               Market data (daily/intraday)
-                              via import_from_api or import_market_csv
+                              via fetch_bars / fetch_quotes / import_market_csv
 ```
 
 ## Links

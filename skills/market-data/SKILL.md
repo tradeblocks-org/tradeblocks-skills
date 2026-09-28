@@ -1,7 +1,7 @@
 ---
 name: market-data
-description: Import and set up market data for TradeBlocks analysis. Guides through importing daily OHLCV, VIX term structure, and intraday option bars from API, CSV, or DuckDB sources. Use when market data is missing, regime analysis shows no matches, replay returns empty paths, or enrich_trades shows warnings.
-compatibility: Requires TradeBlocks MCP server. API imports require MASSIVE_API_KEY env var.
+description: Set up market data for TradeBlocks analysis. Guides through fetching daily and intraday bars, VIX context, and option quotes from a provider, or importing minute bars from CSV or DuckDB. Use when market data is missing, regime analysis shows no matches, or replay returns empty paths.
+compatibility: Requires TradeBlocks MCP server. Provider fetching requires credentials for the selected provider (e.g., MASSIVE_API_KEY for Massive).
 ---
 
 # Market Data Setup
@@ -20,51 +20,54 @@ Guide the user through importing market data so other skills (DC analysis, healt
 
 Ask the user what they're trying to do, then check what data exists:
 
+Use `run_sql` with `query` to inspect coverage (and `describe_database` if the schema is unfamiliar):
+
 ```sql
--- Check daily data coverage
-SELECT ticker, COUNT(*) as rows,
-  MIN(date) as earliest, MAX(date) as latest
-FROM market.daily GROUP BY ticker ORDER BY ticker
+-- Daily bars derived from spot data
+SELECT ticker, COUNT(*) AS days, MIN(date) AS earliest, MAX(date) AS latest
+FROM market.spot_daily GROUP BY ticker ORDER BY ticker
 ```
 
 ```sql
--- Check intraday data coverage
-SELECT
-  CASE WHEN ticker LIKE 'SPX%' OR ticker LIKE 'SPXW%' THEN 'SPX options'
-       WHEN ticker LIKE 'QQQ%' THEN 'QQQ options'
-       WHEN ticker = 'SPX' THEN 'SPX underlying'
-       ELSE ticker END as category,
-  COUNT(DISTINCT ticker) as tickers,
-  COUNT(*) as total_bars
-FROM market.intraday GROUP BY category
+-- Underlying intraday bars
+SELECT ticker, COUNT(*) AS bars, MIN(date) AS earliest, MAX(date) AS latest
+FROM market.spot GROUP BY ticker ORDER BY ticker
 ```
 
 ```sql
--- Check context derived (regime/term structure)
-SELECT COUNT(*) as rows, MIN(date) as earliest, MAX(date) as latest
-FROM market._context_derived
+-- Minute option quotes used by replay
+SELECT underlying, COUNT(DISTINCT ticker) AS contracts,
+  MIN(date) AS earliest, MAX(date) AS latest
+FROM market.option_quote_minutes GROUP BY underlying
+```
+
+```sql
+-- Cross-ticker regime and term structure
+SELECT COUNT(*) AS days, MIN(date) AS earliest, MAX(date) AS latest
+FROM market.enriched_context
 ```
 
 Present what's available and what's missing for their goal.
 
-## Step 2: Determine the Right Import
+## Step 2: Determine the Right Data Source
 
 ### For Regime Analysis (VIX regimes, term structure, enriched trades)
 
-**Minimum needed:** Daily OHLCV for the underlying + VIX context (VIX/VIX9D/VIX3M)
+**Minimum needed:** Daily bars for the underlying and for VIX, VIX9D, VIX3M. Fetch all three VIX tickers before computing cross-ticker context.
 
-| What to import | Tool | Example |
-|---------------|------|---------|
-| Underlying daily (SPX) | `import_from_api` | ticker: "SPX", target_table: "daily" |
-| Underlying daily (QQQ) | `import_from_api` | ticker: "QQQ", target_table: "daily" |
-| VIX context (all 3 tickers) | `import_from_api` | ticker: "VIX", target_table: "context" |
-| Enrichment (RSI, Vol_Regime, etc.) | `enrich_market_data` | Auto-runs after import, or manual |
+| What to fetch | Tool | Example arguments |
+|---------------|------|-------------------|
+| Underlying daily (SPX or QQQ) | `fetch_bars` | `tickers: ["SPX"], from: "2023-02-14", to: "2024-12-31", timespan: "1d"` |
+| VIX-family daily bars | `fetch_bars` | `tickers: ["VIX", "VIX9D", "VIX3M"], from: "2023-02-14", to: "2024-12-31", timespan: "1d"` |
+| Cross-ticker context | `compute_vix_context` | `from: "2023-02-14", to: "2024-12-31"` |
 
-**Order matters:** Import daily first, then context, then enrichment runs automatically.
+**Order matters:** `fetch_bars` writes spot bars and auto-enriches each ticker. Once all three VIX-family tickers are ingested and enriched, call `compute_vix_context` for the same date range. Never compute context on a partially loaded VIX family.
 
-**Useful flags:**
-- `dry_run: true` — validates parameters and shows what would be imported without writing
-- `skip_enrichment: true` — skips automatic enrichment (useful when batching multiple imports, then run `enrich_market_data` once at the end)
+**Useful flags on `fetch_bars`:**
+- `dry_run: true` — preview without writing
+- `skip_enrichment: true` — defer per-ticker enrichment; if used, call `enrich_market_data` for **each** ticker before `compute_vix_context`
+
+**Provider coverage:** Massive index bars start 2023-02-14; choose dates the active provider actually covers. `to` takes a YYYY-MM-DD date, not `"today"`.
 
 **Date range:** Match the trade data range. Check with:
 ```sql
@@ -74,147 +77,125 @@ FROM trades.trade_data WHERE block_id = '<block>'
 
 ### For Trade Replay (minute-level P&L paths, greeks, exit trigger simulation)
 
-**Needed:** Intraday 1-minute bars for each option leg in the trades
+**Needed:** Minute option quotes for each OCC leg and minute underlying spot bars for the same trade dates. `replay_trade` reads the local cache only; it does not auto-fetch missing data.
 
-The replay engine auto-fetches on cache miss if `MASSIVE_API_KEY` is set. For bulk pre-loading:
-
-1. Get the option tickers from recent trades:
+1. Read the legs and trade dates with `run_sql`:
 ```sql
-SELECT DISTINCT legs, date_opened FROM trades.trade_data
+SELECT legs, date_opened FROM trades.trade_data
 WHERE block_id = '<block>' ORDER BY date_opened DESC LIMIT 10
 ```
 
-2. Parse the OCC tickers from the legs string (the replay tool does this automatically)
+2. Obtain the OCC tickers from the legs, then call `fetch_quotes` with `tickers: ["SPXW260320P06410000"]`, `from: "2026-03-20"`, `to: "2026-03-20"` for the option contracts. Use actual dates of the trade and provider coverage; for supported ThetaData bulk fetching, `underlyings: ["SPX"]` can replace `tickers`.
+3. Call `fetch_bars` with `tickers: ["SPX"]`, the same `from` and `to`, and `timespan: "1m"` for underlying spot bars. Then run `replay_trade` or `batch_exit_analysis` against cached data.
 
-3. Import each option ticker:
-```
-import_from_api: ticker="SPXW260320P06410000", target_table="intraday", timespan="1m"
-```
-
-**Note:** Option data availability varies by provider. Massive.com typically has data from ~2022 onward for SPX/SPY options. Older trades won't have replay data.
+**Note:** Provider option coverage varies. Missing quotes or underlying bars can yield degenerate replay; inspect coverage before trusting a $0 result.
 
 ### For TradingView CSV Import
 
-TradingView exports have a Unix timestamp column called `time`. The mapping handles date+time extraction automatically.
+`import_market_csv` imports **minute bars** into spot; daily bars and indicators are derived from the intraday data. For a TradingView minute-bar CSV whose `time` column is a Unix timestamp, map that column to `date`: the parser extracts the time automatically. Do not present a daily-only CSV as minute bars.
 
-**Daily bars:**
 ```json
 {
-  "file_path": "~/Downloads/SPX_daily.csv",
+  "file_path": "~/Downloads/SPX_1m.csv",
   "ticker": "SPX",
-  "target_table": "daily",
   "column_mapping": {
     "time": "date",
     "open": "open",
     "high": "high",
     "low": "low",
     "close": "close"
-  }
+  },
+  "dry_run": true
 }
 ```
 
-**Intraday bars:**
-```json
-{
-  "file_path": "~/Downloads/SPX_15m.csv",
-  "ticker": "SPX",
-  "target_table": "intraday",
-  "column_mapping": {
-    "time": "date",
-    "open": "open",
-    "high": "high",
-    "low": "low",
-    "close": "close"
-  }
-}
-```
-
-Use `dry_run: true` first to validate the mapping before writing.
+Use `dry_run: true` first to inspect the mapping; then repeat without it to write. VIX-family CSV imports also update cross-ticker context, but import all three before verifying derived context.
 
 ### For External DuckDB Import
 
-If the user has market data in another DuckDB file:
+`import_from_database` imports **minute bars** from a read-only attached DuckDB file, with `ext_import_source` as the table alias. Map query columns to spot bar fields:
 
 ```json
 {
   "db_path": "~/data/market.duckdb",
-  "query": "SELECT date, open, high, low, close FROM ext_import_source.spx_daily",
+  "query": "SELECT date, time, open, high, low, close FROM ext_import_source.spx_minutes",
   "ticker": "SPX",
-  "target_table": "daily",
   "column_mapping": {
     "date": "date",
+    "time": "time",
     "open": "open",
     "high": "high",
     "low": "low",
     "close": "close"
-  }
+  },
+  "dry_run": true
 }
 ```
 
-## Step 3: Execute the Import
+## Step 3: Fetch or Import
 
-Run the imports based on what's needed. Common recipes:
+Run the fetches or imports based on what's missing. Common recipes:
 
 ### Recipe: Full SPX Setup (regime + enrichment)
-1. `import_from_api`: ticker="SPX", from="2016-01-01", to="today", target_table="daily"
-2. `import_from_api`: ticker="VIX", from="2016-01-01", to="today", target_table="context"
-3. Enrichment runs automatically after each import
+1. `fetch_bars`: `tickers: ["SPX"]`, `from: "2023-02-14"`, `to: "2024-12-31"`, `timespan: "1d"`
+2. `fetch_bars`: `tickers: ["VIX", "VIX9D", "VIX3M"]`, same dates and `timespan: "1d"`
+3. Once all three VIX tickers are enriched, `compute_vix_context`: same `from` and `to`
 
 ### Recipe: Full QQQ Setup
-1. `import_from_api`: ticker="QQQ", from="2016-01-01", to="today", target_table="daily"
-2. VIX context (same as above — shared across all underlyings)
-3. Enrichment runs automatically
+1. `fetch_bars`: `tickers: ["QQQ"]`, the chosen `from` and `to`, `timespan: "1d"`
+2. Fetch the VIX family and compute context as above (shared across underlyings)
 
 ### Recipe: Replay Data for a Block
-1. Run `batch_exit_analysis` or `replay_trade` — auto-fetches on cache miss if API key is set
-2. Or manually import specific option tickers via `import_from_api` with target_table="intraday"
+1. `fetch_quotes` for the trade's OCC tickers and date range
+2. `fetch_bars` for the underlying with `timespan: "1m"` and the same range
+3. Run `replay_trade` or `batch_exit_analysis` using cached quotes and bars
 
 ## Step 4: Verify
 
-After importing, verify the data is available:
+After fetching or importing, verify the data is available using `run_sql`:
 
 ```sql
 -- Check daily coverage
-SELECT ticker, COUNT(*) as rows, MIN(date) as earliest, MAX(date) as latest
-FROM market.daily GROUP BY ticker ORDER BY ticker
+SELECT ticker, COUNT(*) AS days, MIN(date) AS earliest, MAX(date) AS latest
+FROM market.spot_daily GROUP BY ticker ORDER BY ticker
 ```
 
 ```sql
 -- Check regime data populated
-SELECT Vol_Regime, COUNT(*) as days
-FROM market._context_derived
+SELECT Vol_Regime, COUNT(*) AS days
+FROM market.enriched_context
 GROUP BY Vol_Regime ORDER BY Vol_Regime
 ```
 
 ```sql
 -- Check term structure populated
-SELECT Term_Structure_State, COUNT(*) as days
-FROM market._context_derived
+SELECT Term_Structure_State, COUNT(*) AS days
+FROM market.enriched_context
 WHERE Term_Structure_State IS NOT NULL
 GROUP BY Term_Structure_State
 ```
 
-If `Term_Structure_State` is all NULL, VIX3M data is missing — run the context import.
+If `Term_Structure_State` is all NULL, check coverage for VIX, VIX9D, and VIX3M, fetch any missing bars, then call `compute_vix_context` for the complete range.
 
 ## Common Issues
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `enrich_trades` shows null VIX3M fields | VIX3M not in market.daily | Import with target_table="context" |
-| `Term_Structure_State` all NULL | VIX3M data missing | Import with target_table="context" |
-| `analyze_regime_performance` returns 0 matched | No daily data for that ticker | Import daily OHLCV for the underlying |
-| `replay_trade` returns 0 bars | No intraday option data cached | Set MASSIVE_API_KEY for auto-fetch, or import manually |
-| Enrichment fields missing (RSI, ATR) | `enrich_market_data` not run | Run it manually for the ticker |
-| API import returns 0 rows | Date range outside provider coverage | Try a more recent date range |
+| `enrich_trades` shows null VIX3M fields | VIX3M spot bars missing | `fetch_bars` for VIX3M, then `compute_vix_context` after all three VIX tickers are enriched |
+| `Term_Structure_State` all NULL | VIX-family bars or context missing | Fetch all three VIX tickers, then `compute_vix_context` |
+| `analyze_regime_performance` returns 0 matched | No underlying daily bars | `fetch_bars` for the underlying with `timespan: "1d"` |
+| `replay_trade` returns 0 bars | Cached option quotes or underlying minute bars missing | `fetch_quotes` for OCC tickers and `fetch_bars` for the underlying with `timespan: "1m"` |
+| Enrichment fields missing (RSI, ATR) | Per-ticker enrichment skipped | Run `enrich_market_data` with `ticker` for each affected ticker |
+| Provider fetch returns 0 rows | Date range outside provider coverage | Check the provider's available date range |
 | CSV import fails on column mapping | Wrong column names | Use `dry_run: true` first to preview |
 
 ## Cleanup
 
-Use `purge_market_table` to remove market data when needed (e.g., corrupted import, wrong ticker). This deletes rows from the specified table matching a ticker and optional date range.
+`purge_market_table` accepts only `table: "daily" | "date_context" | "intraday"`; it deletes **all** rows in that table and its sync metadata, not one ticker or date range. Inspect coverage and confirm the scope with the user before using it to repair corrupted data.
 
 ## What NOT to Do
 
-- Don't import daily data without also importing VIX context — regime analysis needs both
-- Don't assume all date ranges have data — Massive.com option data starts ~2022
-- Don't skip enrichment — without it, RSI, Vol_Regime, and other derived fields won't exist
-- Don't import the same data twice without checking — upserts are safe but waste API calls
+- Don't assume a single VIX import computes complete context — ingest all three VIX-family tickers before `compute_vix_context`
+- Don't assume all date ranges have data — Massive index bars start 2023-02-14
+- Don't skip per-ticker enrichment — without it RSI and other per-ticker fields won't be populated, and context computation needs enriched VIX data
+- Don't fetch the same data twice without checking — repeated calls waste provider usage
