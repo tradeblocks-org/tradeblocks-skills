@@ -18,6 +18,7 @@ Guided workflows that chain TradeBlocks MCP tools together for common analysis t
 | `risk` | Risk assessment — tail dependence, drawdown attribution, stress scenarios |
 | `compare` | Strategy comparison — side-by-side metrics across blocks |
 | `market-data` | Market data setup — import daily OHLCV, VIX context, and intraday option bars from API, CSV, or DuckDB |
+| `oo-capture` | Explicitly capture an OO trade log in Claude Code, verify its count and net P/L, then import an ordinary TradeBlocks block |
 
 ## Install
 
@@ -50,6 +51,10 @@ cp -r skills/dc-analysis ~/.claude/skills/
 - **Market data**: Import SPX/QQQ daily OHLCV and VIX context for regime analysis
 - **API key** (optional): Set `MASSIVE_API_KEY` for automatic intraday data fetching during trade replay
 
+
+### Capture OO data in Claude Code
+
+With this plugin, Node.js, a separately installed local TradeBlocks MCP server and OO's MCP server, run `/tradeblocks:oo-capture` to opt in to saving a complete OO backtest's trade log. A PostToolUse hook runs only during an explicitly started capture. Raw OO JSON, recorded tool arguments, named failures and the verified CSV live under `${XDG_DATA_HOME:-~/.local/share}/tradeblocks/oo-captures/<capture-id>/` until you use the skill's `list`/`delete` commands. Deleting a capture does not delete an imported TradeBlocks block. A trade-only import has no marked OO equity curve; its trade-realized analytics are not OO's marked-equity figures. Other clients can export OO's CSV and use `import_csv` directly.
 ## Usage
 
 Once installed, skills are available via `/tradeblocks:<skill>` or Claude will invoke them automatically when relevant.
