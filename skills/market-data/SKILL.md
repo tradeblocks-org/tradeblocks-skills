@@ -84,11 +84,12 @@ FROM trades.trade_data WHERE block_id = '<block>'
 SELECT legs, date_opened, date_closed FROM trades.trade_data
 WHERE block_id = '<block>'
   -- AND strategy ILIKE '%<strategy>%'  AND date_opened >= '<from>'  AND date_opened <= '<to>'
+  -- AND pl >= <min_pl>  AND pl <= <max_pl>
 ORDER BY date_opened DESC LIMIT 50
 ```
 
 2. Obtain the OCC tickers from every returned trade's legs, then call `fetch_quotes` for them from each trade's `date_opened` through its `date_closed` (a trade held overnight needs every session it was open), e.g. `tickers: ["SPXW260320P06410000"]`, `from: "2026-03-20"`, `to: "2026-03-20"`. Use the actual trade dates and provider coverage; for supported ThetaData bulk fetching, `underlyings: ["SPX"]` can replace `tickers`.
-3. Call `fetch_bars` with `tickers: ["SPX"]`, the same open-through-close `from` and `to`, and `timespan: "1m"` for underlying spot bars.
+3. Call `fetch_bars` for each trade's underlying (the ticker its option root resolves to, e.g. `SPX` for `SPXW` legs or `QQQ` for `QQQ` legs; `resolve_root` explains a root you are unsure of) with the same open-through-close `from` and `to`, and `timespan: "1m"` for underlying spot bars.
 4. Run `replay_trade` for one of the prepared trades, or `batch_exit_analysis` with the same `block_id`, filters and `limit` you used in step 1, so it replays only trades whose data is cached. Trades it reports as skipped are missing cached data.
 
 **Note:** Provider option coverage varies. Missing quotes or underlying bars can yield degenerate replay; inspect coverage before trusting a $0 result.
