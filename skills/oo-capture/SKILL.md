@@ -27,7 +27,7 @@ Use only OO's own reported source `parameters.rangeStart`/`rangeEnd` for the cur
 
 ## 3. Stop and verify BEFORE import
 
-Before verification, tell the user the default Strategy: OO's per-trade strategy when supplied, otherwise the saved backtest's headline name; for a nameless run, the Strategy stays empty and TradeBlocks names the trades after the new block's ID. Ask whether their live reporting log uses a different strategy name. Only if they choose one, pass it explicitly (this replaces any OO per-trade names, which remain in the verification provenance):
+Before verification, tell the user the default Strategy: OO's per-trade strategy when supplied, otherwise the saved backtest's headline name; for a nameless run, the Strategy stays empty and TradeBlocks names the trades after the new block's ID. Ask whether their live reporting log uses a different strategy name. Only if they choose one, pass it explicitly as a single line (verification refuses a line break with `INVALID_STRATEGY`, because TradeBlocks `import_csv` cannot read one) (this replaces any OO per-trade names, which remain in the verification provenance):
 
 ```bash
 node "${CLAUDE_SKILL_DIR}/../../scripts/oo-capture.mjs" stop "${CLAUDE_SESSION_ID}"

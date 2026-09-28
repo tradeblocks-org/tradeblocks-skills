@@ -130,6 +130,14 @@ test('CLI explicit strategy writes the returned name and rejects blank names', a
   assert.equal(blank.status, 1);
   assert.match(blank.stderr, /^INVALID_STRATEGY:/);
 });
+test('a strategy name with a line break is refused before any CSV is written', async () => {
+  const chosen = await capture();
+  await assert.rejects(verify(chosen.id, 'Daily, "Core"\nSecond line'), /^Error: INVALID_STRATEGY: user strategy name contains a line break/);
+  await assert.rejects(fs.access(path.join(home, 'tradeblocks', 'oo-captures', chosen.id, 'tradelog.csv')));
+  const fromOo = await capture({ rows: [trade(19, { strategyName: 'Iron\r\nFly' })] });
+  await assert.rejects(verify(fromOo.id), /^Error: INVALID_STRATEGY: OO trade strategy name contains a line break/);
+  assert.equal((await verify(fromOo.id, 'Iron Fly')).strategy.names[0].name, 'Iron Fly');
+});
 test('hook outside start and after stop saves nothing', async () => {
   const session = `session_${serial++}`;
   const input = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1' }, { items: [] });

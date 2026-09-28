@@ -263,6 +263,8 @@ export async function verify(id, chosenName) {
     const ooName = rawOoName.trim();
     const name = chosenName?.trim() ?? (ooName || headlineName);
     const source = chosenName !== undefined ? 'user' : ooName ? 'OO trade' : headlineName ? 'OO headline' : 'blank→blockId fallback';
+    // TradeBlocks import_csv splits records on physical line breaks, even inside a quoted field.
+    if (/[\r\n]/.test(name)) fail('INVALID_STRATEGY', `${source} strategy name contains a line break, which TradeBlocks import_csv cannot read; choose a single-line name`);
     const key = JSON.stringify([name, source]);
     const previous = strategyNames.get(key);
     strategyNames.set(key, { name, source, rows: (previous?.rows ?? 0) + 1 });
