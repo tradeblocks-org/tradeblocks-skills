@@ -46,6 +46,8 @@ node "${CLAUDE_SKILL_DIR}/../../scripts/oo-capture.mjs" combine <best-capture-id
 
 Use the returned `csvPath` unchanged with TradeBlocks `import_csv`, a fresh `blockName`, `csvType: "tradelog"`, `plBasis: "net_includes_fees"`; **omit `dailyLogPath`**. The combined file is two alternative runs' trades, not one marked portfolio curve. Its manifest maps each label to its runId, captureId and verification. The comparison itself is listed and deleted with the existing capture `list`/`delete` commands; deleting it does not delete either input capture or the imported block. Do not attach either run's daily log or equity curve.
 
+`combine` refuses arms whose OO headlines disagree on starting funds or on an OO-reported date range (`BASIS_MISMATCH`): the comparison must be two settings on one basis, not two periods. OO run headlines currently report no date range; the returned `basis.rangeEvidence` says so, and the verdict must state that equal ranges rest on both runs having been started from the same base backtest parameters.
+
 Use `get_block_info` and `run_sql` on `trades.trade_data` for the imported `blockId`, grouping by strategy to obtain `COUNT(*)` and `SUM(pl)` per arm. Compare these with **each arm's** verification count and net profit to the cent, including the exact Strategy label. Stop and report any disagreement; an import receipt is not reconciliation. In the winner==centre case import the one verified capture using [oo-capture step 4](../oo-capture/SKILL.md) instead, and do not claim a two-arm block.
 
 ### 5. Run the existing TradeBlocks diagnostics

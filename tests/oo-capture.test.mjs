@@ -305,11 +305,11 @@ test('curve hook retains inline and saved-file JSON bytes with arguments', async
   await stop(session);
 });
 
-async function runCapture(runId, profits, server = 'my_oo') {
+async function runCapture(runId, profits, server = 'my_oo', headline = {}) {
   const session = `session_${serial++}`;
   const { id } = await start(session);
   const send = (name, args, response) => hook({ ...event(session, name, args, response), tool_name: `mcp__${server}__${name}` });
-  await send('get_backtest_results', { runId }, { numberOfTrades: profits.length, numberOfOpenTrades: 0, profit: profits.reduce((sum, n) => sum + n, 0) });
+  await send('get_backtest_results', { runId }, { numberOfTrades: profits.length, numberOfOpenTrades: 0, profit: profits.reduce((sum, n) => sum + n, 0), ...headline });
   await send('get_trade_log', { runId, offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' },
     { offset: 0, totalCount: profits.length, items: profits.map((n) => trade(n)), nextOffset: null, sortedBy: 'opened', direction: 'asc' });
   await stop(session);
@@ -358,14 +358,16 @@ test('combine publishes one trade-only CSV with each verified run reconciled by 
   assert.equal((await list()).some((item) => item.id === result.id), false);
 });
 
-test('combine refuses missing, unverified, duplicate run, cross-server and colliding labels without publishing', async () => {
+test('combine refuses missing, unverified, duplicate run, cross-server, different-basis and colliding labels without publishing', async () => {
   const a = await runCapture('run-a', [19]);
   const b = await runCapture('run-b', [8]);
   const same = await runCapture('run-a', [19]);
   const foreign = await runCapture('run-c', [8], 'oo_prod');
+  const richer = await runCapture('run-d', [8], 'my_oo', { startingFunds: 700000 });
   await verify(a);
   await verify(same);
   await verify(foreign);
+  await verify(richer);
   const saved = await capture();
   await verify(saved.id);
   const before = (await list()).length;
@@ -374,6 +376,7 @@ test('combine refuses missing, unverified, duplicate run, cross-server and colli
     [[a, 'best', b, 'centre'], 'UNVERIFIED_CAPTURE'],
     [[a, 'best', same, 'centre'], 'DUPLICATE_RUN'],
     [[a, 'best', foreign, 'centre'], 'SERVER_MISMATCH'],
+    [[a, 'best', richer, 'centre'], 'BASIS_MISMATCH'],
     [[a, 'best', same, 'best'], 'LABEL_COLLISION'],
     [[a, 'best', saved.id, 'centre'], 'NOT_RUN_CAPTURE'],
     [[a, 'Best', same, 'best'], 'LABEL_COLLISION'],

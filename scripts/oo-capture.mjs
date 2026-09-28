@@ -280,7 +280,10 @@ async function combinedArm(id, label) {
     .flatMap((page) => page.items).filter((trade) => trade.isIgnored !== true);
   const profit = trades.reduce((total, trade) => total + money(trade.profit, 'trade profit'), 0);
   if (trades.length !== summary.trades || profit !== money(Number(summary.ooProfit), 'verified profit')) fail('ARM_MISMATCH', `${label} does not reconcile`);
-  return { captureId: id, runId: summary.source.runId, label, verification: summary, server, lines: trades.map((trade) => row(trade, label)) };
+  // The arms must be alternatives on one basis. OO run headlines report starting funds; a date range only when OO supplies one.
+  const result = await captureJson(path.join(dir, 'responses', headline.rawFile));
+  const basis = { startingFunds: result.startingFunds ?? null, rangeStart: result.parameters?.rangeStart ?? null, rangeEnd: result.parameters?.rangeEnd ?? null };
+  return { captureId: id, runId: summary.source.runId, label, verification: summary, server, basis, lines: trades.map((trade) => row(trade, label)) };
 }
 export async function combine(bestId, bestLabel, centreId, centreLabel) {
   if ([bestLabel, centreLabel].some((label) => typeof label !== 'string' || !label.trim())) fail('INVALID_LABEL', 'both strategy labels must be nonempty');
@@ -288,6 +291,10 @@ export async function combine(bestId, bestLabel, centreId, centreLabel) {
   const arms = [await combinedArm(bestId, bestLabel), await combinedArm(centreId, centreLabel)];
   if (arms[0].runId === arms[1].runId) fail('DUPLICATE_RUN', 'both captures refer to the same runId');
   if (arms[0].server !== arms[1].server) fail('SERVER_MISMATCH', 'captures came from different OO servers');
+  for (const key of ['startingFunds', 'rangeStart', 'rangeEnd']) {
+    if (arms[0].basis[key] !== arms[1].basis[key]) fail('BASIS_MISMATCH', `arms differ on OO-reported ${key}: ${arms[0].basis[key]} vs ${arms[1].basis[key]}`);
+  }
+  const basis = { ...arms[0].basis, rangeEvidence: arms[0].basis.rangeStart === null ? 'OO run headlines report no date range; equal ranges rest on both runs using the base backtest parameters' : 'equal OO-reported date range' };
   const id = randomUUID();
   const directory = capturePath(id);
   const csvPath = path.join(directory, 'comparison.csv');
@@ -296,9 +303,9 @@ export async function combine(bestId, bestLabel, centreId, centreLabel) {
   try {
     await fs.writeFile(csvPath, `${[columns.join(','), ...arms.flatMap((arm) => arm.lines)].join('\n')}\n`, { flag: 'wx', mode: 0o600 });
     await saveJson(path.join(directory, 'manifest.json'), { id, status: 'stopped', kind: 'comparison', startedAt: new Date().toISOString(), server: arms[0].server, arms: provenance });
-    await saveJson(path.join(directory, 'verification.json'), { id, csvPath, csvPlBasis: 'net_includes_fees', arms: provenance, reconciliation: 'each strategy count and net profit match its verified OO run to the cent' });
+    await saveJson(path.join(directory, 'verification.json'), { id, csvPath, csvPlBasis: 'net_includes_fees', arms: provenance, basis, reconciliation: 'each strategy count and net profit match its verified OO run to the cent' });
   } catch (error) { await fs.rm(directory, { recursive: true }); throw error; }
-  return { id, directory, csvPath, arms: provenance.map(({ captureId, runId, label, verification }) => ({ captureId, runId, label, trades: verification.trades, ooProfit: verification.ooProfit })) };
+  return { id, directory, csvPath, basis, arms: provenance.map(({ captureId, runId, label, verification }) => ({ captureId, runId, label, trades: verification.trades, ooProfit: verification.ooProfit })) };
 }
 export async function list() {
   try {
