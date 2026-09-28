@@ -20,7 +20,7 @@ async function capture({ rows = [trade(19), trade(900, { isIgnored: true })], he
   const session = `session_${serial++}`;
   const { id } = await start(session);
   const source = { savedBacktestId: 'backtest-1' };
-  await hook(event(session, 'get_saved_backtest', source, { id: 'backtest-1', parameters: { name: 'fixture', rangeStart: range[0], rangeEnd: range[1] }, result: { numberOfTrades: 1, numberOfOpenTrades: 2, profit: 19, ...headline } }));
+  await hook(event(session, 'get_saved_backtest', source, { id: 'backtest-1', name: 'Fixture Default', parameters: { name: 'fixture', rangeStart: range[0], rangeEnd: range[1] }, result: { numberOfTrades: 1, numberOfOpenTrades: 2, profit: 19, ...headline } }));
   const chunks = pages || [rows];
   for (let i = 0, offset = 0; i < chunks.length; i++) {
     const args = { ...source, sortBy: 'opened', direction: 'asc', limit: 100, offset };
@@ -75,6 +75,68 @@ test('verified single-run CSV keeps each trade\'s OO strategy name in the Strate
   const result = await verify(id);
   const [header, line] = (await fs.readFile(result.csvPath, 'utf8')).trim().split('\n');
   assert.equal(line.split(',')[header.split(',').indexOf('Strategy')], 'Iron Fly');
+});
+test('chosen strategy reaches every economic row without changing reconciliation or curve', async () => {
+  const { id } = await capture({ rows: [trade(12), trade(7), trade(900, { isIgnored: true })], headline: { numberOfTrades: 2 } });
+  const baseline = await verify(id);
+  const chosen = await verify(id, 'Daily, "Core"');
+  const [header, ...rows] = parseCsv(await fs.readFile(chosen.csvPath, 'utf8'));
+  assert.deepEqual(rows.map((fields) => fields[header.indexOf('Strategy')]), ['Daily, "Core"', 'Daily, "Core"']);
+  assert.deepEqual([chosen.trades, chosen.ignoredRows, chosen.ooProfit, chosen.csvPlBasis, chosen.curve],
+    [baseline.trades, baseline.ignoredRows, baseline.ooProfit, baseline.csvPlBasis, baseline.curve]);
+  assert.deepEqual(chosen.strategy, { names: [{ name: 'Daily, "Core"', source: 'user', rows: 2 }], overriddenOoNames: [] });
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(home, 'tradeblocks', 'oo-captures', id, 'verification.json'), 'utf8')), chosen);
+});
+test('saved headline defaults the strategy, while a nameless run retains the import fallback', async () => {
+  const { id } = await capture();
+  const saved = await verify(id);
+  const [savedHeader, savedTrade] = parseCsv(await fs.readFile(saved.csvPath, 'utf8'));
+  assert.equal(savedTrade[savedHeader.indexOf('Strategy')], 'Fixture Default');
+  assert.deepEqual(saved.strategy, { names: [{ name: 'Fixture Default', source: 'OO headline', rows: 1 }], overriddenOoNames: [] });
+  const runId = await runCapture('run-nameless', [19]);
+  const run = await verify(runId);
+  const [runHeader, runTrade] = parseCsv(await fs.readFile(run.csvPath, 'utf8'));
+  assert.equal(runTrade[runHeader.indexOf('Strategy')], '');
+  assert.deepEqual(run.strategy, { names: [{ name: '', source: 'blank→blockId fallback', rows: 1 }], overriddenOoNames: [] });
+});
+test('OO strategy survives absent user choice; an explicit override records OO originals and a repeat clears it', async () => {
+  const { id } = await capture({ rows: [trade(12, { strategyName: 'OO Alpha' }), trade(7, { strategyName: 'OO Beta' })], headline: { numberOfTrades: 2 } });
+  const preserved = await verify(id);
+  assert.deepEqual(preserved.strategy.names, [
+    { name: 'OO Alpha', source: 'OO trade', rows: 1 }, { name: 'OO Beta', source: 'OO trade', rows: 1 },
+  ]);
+  const overridden = await verify(id, 'Live Strategy');
+  assert.deepEqual(overridden.strategy, {
+    names: [{ name: 'Live Strategy', source: 'user', rows: 2 }], overriddenOoNames: ['OO Alpha', 'OO Beta'],
+  });
+  const [header, ...rows] = parseCsv(await fs.readFile(overridden.csvPath, 'utf8'));
+  assert.deepEqual(rows.map((fields) => fields[header.indexOf('Strategy')]), ['Live Strategy', 'Live Strategy']);
+  const repeated = await verify(id);
+  const [freshHeader, ...freshRows] = parseCsv(await fs.readFile(repeated.csvPath, 'utf8'));
+  assert.deepEqual(freshRows.map((fields) => fields[freshHeader.indexOf('Strategy')]), ['OO Alpha', 'OO Beta']);
+  assert.deepEqual(repeated.strategy, preserved.strategy);
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(home, 'tradeblocks', 'oo-captures', id, 'verification.json'), 'utf8')), repeated);
+});
+test('CLI explicit strategy writes the returned name and rejects blank names', async () => {
+  const { id } = await capture();
+  const script = new URL('../scripts/oo-capture.mjs', import.meta.url).pathname;
+  const call = spawnSync(process.execPath, [script, 'verify', id, '--strategy', 'Reporting Strategy'], { encoding: 'utf8', env: process.env });
+  assert.equal(call.status, 0, call.stderr);
+  const result = JSON.parse(call.stdout);
+  const [header, row] = parseCsv(await fs.readFile(result.csvPath, 'utf8'));
+  assert.equal(row[header.indexOf('Strategy')], 'Reporting Strategy');
+  assert.deepEqual(result.strategy.names, [{ name: 'Reporting Strategy', source: 'user', rows: 1 }]);
+  const blank = spawnSync(process.execPath, [script, 'verify', id, '--strategy', '  '], { encoding: 'utf8', env: process.env });
+  assert.equal(blank.status, 1);
+  assert.match(blank.stderr, /^INVALID_STRATEGY:/);
+});
+test('a strategy name with a line break is refused before any CSV is written', async () => {
+  const chosen = await capture();
+  await assert.rejects(verify(chosen.id, 'Daily, "Core"\nSecond line'), /^Error: INVALID_STRATEGY: user strategy name contains a line break/);
+  await assert.rejects(fs.access(path.join(home, 'tradeblocks', 'oo-captures', chosen.id, 'tradelog.csv')));
+  const fromOo = await capture({ rows: [trade(19, { strategyName: 'Iron\r\nFly' })] });
+  await assert.rejects(verify(fromOo.id), /^Error: INVALID_STRATEGY: OO trade strategy name contains a line break/);
+  assert.equal((await verify(fromOo.id, 'Iron Fly')).strategy.names[0].name, 'Iron Fly');
 });
 test('hook outside start and after stop saves nothing', async () => {
   const session = `session_${serial++}`;

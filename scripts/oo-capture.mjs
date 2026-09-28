@@ -194,7 +194,8 @@ function curveRows(records, sourceKey, sourceId, server, rangeStart, rangeEnd) {
   }
   return { lines, summary: { rows: expected.length, rangeStart, rangeEnd, windows: requests.length, requests, maxDrawdownPct: expected.length ? (Math.min(...expected.map((date) => rows.get(date).drawdownPercentage)) / 100).toFixed(2) : null } };
 }
-export async function verify(id) {
+export async function verify(id, chosenName) {
+  if (chosenName !== undefined && (typeof chosenName !== 'string' || !chosenName.trim())) fail('INVALID_STRATEGY', 'strategy name must be nonblank');
   const dir = capturePath(id);
   const manifest = await captureJson(path.join(dir, 'manifest.json'));
   if (manifest.status !== 'stopped') fail('INTERRUPTED_CAPTURE', 'stop capture before verification');
@@ -253,14 +254,30 @@ export async function verify(id) {
   const profit = economic.reduce((sum, trade) => sum + money(trade.profit, 'trade profit'), 0);
   if (profit !== expectedProfit) fail('PROFIT_MISMATCH', `${profit} cents vs OO ${expectedProfit} cents`);
   const curve = hasRange ? curveRows(records, sourceKey, sourceId, server, rangeStart, rangeEnd) : null;
-  const lines = [columns.join(','), ...economic.map((trade) => row(trade, trade.strategyName))];
+  const headlineName = sourceKey === 'savedBacktestId' && typeof headline.data.name === 'string' ? headline.data.name.trim() : '';
+  const strategyNames = new Map();
+  const overriddenOoNames = new Set();
+  const lines = [columns.join(',')];
+  for (const trade of economic) {
+    const rawOoName = typeof trade.strategyName === 'string' ? trade.strategyName : '';
+    const ooName = rawOoName.trim();
+    const name = chosenName?.trim() ?? (ooName || headlineName);
+    const source = chosenName !== undefined ? 'user' : ooName ? 'OO trade' : headlineName ? 'OO headline' : 'blank→blockId fallback';
+    // TradeBlocks import_csv splits records on physical line breaks, even inside a quoted field.
+    if (/[\r\n]/.test(name)) fail('INVALID_STRATEGY', `${source} strategy name contains a line break, which TradeBlocks import_csv cannot read; choose a single-line name`);
+    const key = JSON.stringify([name, source]);
+    const previous = strategyNames.get(key);
+    strategyNames.set(key, { name, source, rows: (previous?.rows ?? 0) + 1 });
+    if (chosenName !== undefined && ooName && name !== ooName) overriddenOoNames.add(rawOoName);
+    lines.push(row(trade, name));
+  }
   if (!economic.length) fail('EMPTY_BLOCK', 'import_csv cannot import an empty trade log');
-  // verify is a pure function of the saved responses, so a re-run (after success or an interruption) rewrites both files.
+  // A repeat verify uses only the saved responses and this call's chosenName; it rewrites both outputs.
   const csvPath = path.join(dir, 'tradelog.csv');
   await fs.writeFile(csvPath, `${lines.join('\n')}\n`, { mode: 0o600 });
   const dailyLogPath = curve ? path.join(dir, 'dailylog.csv') : null;
   if (curve) await fs.writeFile(dailyLogPath, `${curve.lines.join('\n')}\n`, { mode: 0o600 });
-  const summary = { id, csvPath, source: { [sourceKey]: sourceId }, trades: economic.length, ignoredRows: all.length - economic.length, openAtEnd: result.numberOfOpenTrades, ooProfit: (expectedProfit / 100).toFixed(2), csvPlBasis: 'net_includes_fees', reconciliation: 'count and net profit match OO to the cent', dailyLogPath, curve: curve?.summary ?? null, curveMissingReason: curve ? null : 'OO headline reports no source date range' };
+  const summary = { id, csvPath, source: { [sourceKey]: sourceId }, strategy: { names: [...strategyNames.values()], overriddenOoNames: [...overriddenOoNames] }, trades: economic.length, ignoredRows: all.length - economic.length, openAtEnd: result.numberOfOpenTrades, ooProfit: (expectedProfit / 100).toFixed(2), csvPlBasis: 'net_includes_fees', reconciliation: 'count and net profit match OO to the cent', dailyLogPath, curve: curve?.summary ?? null, curveMissingReason: curve ? null : 'OO headline reports no source date range' };
   await fs.writeFile(path.join(dir, 'verification.json'), `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });
   return summary;
 }
@@ -328,7 +345,11 @@ const cli = process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(i
 if (cli) {
   const [command, ...args] = process.argv.slice(2);
   try {
-    const result = command === 'start' ? await start(args[0]) : command === 'stop' ? await stop(args[0]) : command === 'verify' ? await verify(args[0]) : command === 'combine' ? await combine(...args) : command === 'list' ? await list() : command === 'delete' ? await remove(args[0]) : fail('COMMAND', 'use start|stop|verify|combine|list|delete');
+    const result = command === 'start' ? await start(args[0]) : command === 'stop' ? await stop(args[0]) : command === 'verify'
+      ? args.length === 1 || (args.length === 3 && args[1] === '--strategy')
+        ? await verify(args[0], args[2])
+        : fail('COMMAND', 'use verify <capture-id> [--strategy <name>]')
+      : command === 'combine' ? await combine(...args) : command === 'list' ? await list() : command === 'delete' ? await remove(args[0]) : fail('COMMAND', 'use start|stop|verify|combine|list|delete');
     console.log(JSON.stringify(result));
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }
