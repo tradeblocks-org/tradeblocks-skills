@@ -50,7 +50,23 @@ Use `get_block_info` and `run_sql` on `trades.trade_data` for the imported `bloc
 
 ### 5. Run the existing TradeBlocks diagnostics
 
-For each distinct strategy label in the reconciled comparison block, call `run_walk_forward`, `run_monte_carlo`, and `analyze_edge_decay` with that `blockId` and its `strategy` filter. Call `paired_bootstrap_comparison` once on the **same block**, `strategyA` set to best and `strategyB` to centre. Preserve its reported mode, joint-day overlap, arm-only days, interval and status; if it refuses, report the refusal rather than replacing the paired difference with a test against zero. For a single candidate, run the three single-arm diagnostics but mark the paired difference skipped. State all insufficient-data outcomes explicitly.
+For each distinct strategy label in the reconciled comparison block, call `run_walk_forward`, `run_monte_carlo`, and `analyze_edge_decay` with that `blockId` and its `strategy` filter. Call `paired_bootstrap_comparison` once on the **same block**, `strategyA` set to best and `strategyB` to centre. Preserve its reported mode, overlap window, per-arm `observedDays`, interval and status; if it refuses, report the refusal rather than replacing the paired difference with a test against zero. For a single candidate, run the three single-arm diagnostics but mark the paired difference skipped. State all insufficient-data outcomes explicitly.
+
+The paired tool reports each arm's observed days but not how many are shared. Derive jointly held, best-only and centre-only days with TradeBlocks `run_sql`, using the tool's convention (the day grid is every trade's open and close date in the block; an arm is observed on a grid day it holds a trade, open through close inclusive), substituting the block ID and both exact labels (double any `'` inside a label):
+
+```sql
+WITH t AS (SELECT strategy, date_opened AS o, COALESCE(date_closed, date_opened) AS c
+           FROM trades.trade_data WHERE block_id = '<blockId>'),
+grid AS (SELECT o AS d FROM t UNION SELECT c FROM t),
+held AS (SELECT g.d, BOOL_OR(t.strategy = '<best label>') AS a, BOOL_OR(t.strategy = '<centre label>') AS b
+         FROM grid g JOIN t ON g.d BETWEEN t.o AND t.c GROUP BY g.d)
+SELECT COUNT(*) FILTER (WHERE a) AS best_days, COUNT(*) FILTER (WHERE b) AS centre_days,
+       COUNT(*) FILTER (WHERE a AND b) AS joint_days, COUNT(*) FILTER (WHERE a AND NOT b) AS best_only_days,
+       COUNT(*) FILTER (WHERE b AND NOT a) AS centre_only_days
+FROM held;
+```
+
+`best_days` and `centre_days` must equal the tool's `observedDays` for arms A and B; if they differ, report both and do not state a joint-day count. Report joint and arm-only days in the verdict: the paired interval uses only the joint days, so arm-only days are outside what it tests.
 
 ### 6. Deliver an evidence-limited verdict
 
