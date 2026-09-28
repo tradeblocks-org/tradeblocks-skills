@@ -187,3 +187,12 @@ test('verify can be re-run and gives the same result', async () => {
 });
 refusal('impossible calendar date', { rows: [trade(19, { dateClosed: '2026-02-30' })] }, 'INVALID_TRADE');
 refusal('out-of-range month', { rows: [trade(19, { dateOpened: '2026-13-01' })] }, 'INVALID_TRADE');
+test('pages from another OO server with a colliding id and matching totals refuse', async () => {
+  const session = `session_${serial++}`;
+  const { id } = await start(session);
+  await hook(event(session, 'get_backtest_results', { runId: 'run-7' }, { numberOfTrades: 1, numberOfOpenTrades: 0, profit: 19 }));
+  const page = event(session, 'get_trade_log', { runId: 'run-7', offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' }, { offset: 0, totalCount: 1, items: [trade(19, { strike: 4000 })], nextOffset: null, sortedBy: 'opened', direction: 'asc' });
+  await hook({ ...page, tool_name: 'mcp__oo_prod__get_trade_log' });
+  await stop(session);
+  await assert.rejects(verify(id), /SOURCE_MISMATCH:/);
+});

@@ -143,8 +143,11 @@ export async function verify(id) {
   const result = sourceKey === 'runId' ? headline.data : headline.data.result;
   if (!result || !Number.isInteger(result.numberOfTrades) || !Number.isInteger(result.numberOfOpenTrades) || result.numberOfTrades < 0 || result.numberOfOpenTrades < 0) fail('INVALID_HEADLINE', 'OO count/open-at-end figures unavailable');
   const expectedProfit = money(result.profit, 'OO profit');
+  // Two OO servers (e.g. production and staging) can reuse an id, so every page must come from the headline's server.
+  const server = headline.toolName.slice(0, headline.toolName.lastIndexOf('__'));
   const pages = records.filter((entry) => entry.toolName.endsWith('__get_trade_log'));
   if (!pages.length) fail('MISSING_PAGE', 'no trade-log pages captured');
+  if (pages.some((page) => page.toolName !== `${server}__get_trade_log`)) fail('SOURCE_MISMATCH', 'trade-log page from a different OO server than the headline');
   for (const page of pages) {
     const args = page.toolInput || {};
     if (args[sourceKey] !== sourceId || sourceKeys.some((key) => key !== sourceKey && args[key] != null) || args.savedPortfolioId != null) fail('SOURCE_MISMATCH', 'trade-log page from another source');
