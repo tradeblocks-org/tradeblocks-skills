@@ -70,6 +70,12 @@ test('verified OO economic log excludes ignored profits, keeps net fees, decimal
   assert.equal((await list()).some((entry) => entry.id === id), false);
   await assert.rejects(fs.access(result.dailyLogPath));
 });
+test('verified single-run CSV keeps each trade\'s OO strategy name in the Strategy column', async () => {
+  const { id } = await capture({ rows: [trade(19, { strategyName: 'Iron Fly' })] });
+  const result = await verify(id);
+  const [header, line] = (await fs.readFile(result.csvPath, 'utf8')).trim().split('\n');
+  assert.equal(line.split(',')[header.split(',').indexOf('Strategy')], 'Iron Fly');
+});
 test('hook outside start and after stop saves nothing', async () => {
   const session = `session_${serial++}`;
   const input = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1' }, { items: [] });

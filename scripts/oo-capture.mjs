@@ -115,7 +115,7 @@ function calendarDate(text) {
   const date = new Date(`${text}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
 }
-function row(trade, strategy = trade.strategyName) {
+function row(trade, strategy) {
   if (!calendarDate(trade.dateOpened) || !calendarDate(trade.dateClosed)) fail('INVALID_TRADE', 'economic trade needs valid open and close dates');
   if (!Number.isInteger(trade.numberOfContracts) || trade.numberOfContracts < 1) fail('INVALID_TRADE', 'numberOfContracts must be positive integer');
   if (!Array.isArray(trade.legs)) fail('INVALID_TRADE', 'legs must be an array');
@@ -253,7 +253,7 @@ export async function verify(id) {
   const profit = economic.reduce((sum, trade) => sum + money(trade.profit, 'trade profit'), 0);
   if (profit !== expectedProfit) fail('PROFIT_MISMATCH', `${profit} cents vs OO ${expectedProfit} cents`);
   const curve = hasRange ? curveRows(records, sourceKey, sourceId, server, rangeStart, rangeEnd) : null;
-  const lines = [columns.join(','), ...economic.map(row)];
+  const lines = [columns.join(','), ...economic.map((trade) => row(trade, trade.strategyName))];
   if (!economic.length) fail('EMPTY_BLOCK', 'import_csv cannot import an empty trade log');
   // verify is a pure function of the saved responses, so a re-run (after success or an interruption) rewrites both files.
   const csvPath = path.join(dir, 'tradelog.csv');
