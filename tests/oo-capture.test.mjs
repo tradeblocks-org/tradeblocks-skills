@@ -185,3 +185,5 @@ test('verify can be re-run and gives the same result', async () => {
   const { id } = await capture({});
   assert.deepEqual(await verify(id), await verify(id));
 });
+refusal('impossible calendar date', { rows: [trade(19, { dateClosed: '2026-02-30' })] }, 'INVALID_TRADE');
+refusal('out-of-range month', { rows: [trade(19, { dateOpened: '2026-13-01' })] }, 'INVALID_TRADE');

@@ -108,8 +108,14 @@ function money(value, name) { if (typeof value !== 'number' || !Number.isFinite(
 function csv(value) { const text = String(value ?? ''); return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text; }
 const columns = ['Date Opened', 'Time Opened', 'Opening Price', 'Legs', 'Premium', 'Closing Price', 'Date Closed', 'Time Closed', 'Avg. Closing Cost', 'Reason For Close', 'P/L', 'P/L Basis', 'No. of Contracts', 'Funds at Close', 'Margin Req.', 'Strategy', 'Opening Commissions + Fees', 'Closing Commissions + Fees'];
 function dollars(value, name) { return (money(value, name) / 100).toFixed(2); }
+// TradeBlocks builds a local Date from Y-M-D, which rolls an impossible day (2026-02-30) into the next month, so refuse it here.
+function calendarDate(text) {
+  if (typeof text !== 'string' || !/^\d{4}-\d\d-\d\d$/.test(text)) return false;
+  const date = new Date(`${text}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
+}
 function row(trade) {
-  if (!/^\d{4}-\d\d-\d\d$/.test(trade.dateOpened || '') || !trade.dateClosed || !/^\d{4}-\d\d-\d\d$/.test(trade.dateClosed)) fail('INVALID_TRADE', 'economic trade needs valid open and close dates');
+  if (!calendarDate(trade.dateOpened) || !calendarDate(trade.dateClosed)) fail('INVALID_TRADE', 'economic trade needs valid open and close dates');
   if (!Number.isInteger(trade.numberOfContracts) || trade.numberOfContracts < 1) fail('INVALID_TRADE', 'numberOfContracts must be positive integer');
   if (!Array.isArray(trade.legs)) fail('INVALID_TRADE', 'legs must be an array');
   // OO sends a nullable property by omitting it, so an absent fee is its documented null: none charged.
