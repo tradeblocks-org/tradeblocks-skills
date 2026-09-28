@@ -109,3 +109,10 @@ test('runId source binds results and pages without a saved-backtest ID', async (
   await stop(session);
   assert.deepEqual((await verify(id)).source, { runId: 'run-7' });
 });
+test('missing provenance file cannot be published', async () => {
+  const { id } = await capture();
+  const dir = path.join(home, 'tradeblocks', 'oo-captures', id);
+  const files = await fs.readdir(path.join(dir, 'responses'));
+  await fs.unlink(path.join(dir, 'responses', files.find((name) => name.endsWith('.txt'))));
+  await assert.rejects(verify(id), /MISSING_CAPTURE_FILE:/);
+});

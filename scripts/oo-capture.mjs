@@ -13,6 +13,10 @@ function validSession(id) { if (!/^[a-zA-Z0-9_-]+$/.test(id || '')) fail('SESSIO
 function activePath(id) { return path.join(root, 'active', `${validSession(id)}.json`); }
 function capturePath(id) { if (!/^[a-f0-9-]{36}$/.test(id || '')) fail('CAPTURE_ID', 'invalid capture ID'); return path.join(root, id); }
 async function json(file) { return JSON.parse(await fs.readFile(file, 'utf8')); }
+async function captureJson(file) {
+  try { return await json(file); }
+  catch (error) { fail('MISSING_CAPTURE_FILE', `${file}: ${error.message}`); }
+}
 async function saveJson(file, value) { await fs.writeFile(file, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx', mode: 0o600 }); }
 async function marker(session) { try { return await json(activePath(session)); } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
 export async function start(session) {
@@ -103,13 +107,13 @@ function row(trade) {
 }
 export async function verify(id) {
   const dir = capturePath(id);
-  const manifest = await json(path.join(dir, 'manifest.json'));
+  const manifest = await captureJson(path.join(dir, 'manifest.json'));
   if (manifest.status !== 'stopped') fail('INTERRUPTED_CAPTURE', 'stop capture before verification');
-  const names = await fs.readdir(path.join(dir, 'responses'));
-  const events = await Promise.all(names.filter((name) => name.endsWith('.json')).map((name) => json(path.join(dir, 'responses', name))));
+  const names = await fs.readdir(path.join(dir, 'responses')).catch((error) => fail('MISSING_CAPTURE_FILE', error.message));
+  const events = await Promise.all(names.filter((name) => name.endsWith('.json')).map((name) => captureJson(path.join(dir, 'responses', name))));
   const failure = events.find((entry) => entry.failure);
   if (failure) fail(failure.failure, failure.detail);
-  const records = await Promise.all(events.map(async (entry) => ({ ...entry, data: JSON.parse(await fs.readFile(path.join(dir, 'responses', entry.rawFile), 'utf8')) })));
+  const records = await Promise.all(events.map(async (entry) => ({ ...entry, data: await captureJson(path.join(dir, 'responses', entry.rawFile)) })));
   const headlines = records.filter((entry) => /__(get_saved_backtest|get_backtest_results)$/.test(entry.toolName));
   if (headlines.length !== 1) fail('HEADLINE_COUNT', 'expected exactly one OO headline response');
   const headline = headlines[0];
