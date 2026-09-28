@@ -16,8 +16,8 @@ const external = /^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i;
 const titleClose = { '"': '"', "'": "'", "(": ")" };
 const missing = [];
 
-// Parse an inline-link destination starting at `i`, just after `](`. Returns the raw
-// destination, or null when the text there is not a link.
+// Parse an inline link from `i`, just after `](`. Returns the raw destination and the index past
+// the link's closing `)`, or null when the text there is not a link.
 function destination(line, i) {
   while (line[i] === " " || line[i] === "\t") i++;
   let target = "";
@@ -42,13 +42,14 @@ function destination(line, i) {
     if (depth > 0) return null;
   }
   while (line[i] === " " || line[i] === "\t") i++;
-  if (titleClose[line[i]]) {
-    const end = line.indexOf(titleClose[line[i]], i + 1);
-    if (end < 0) return null;
-    i = end + 1;
+  const close = titleClose[line[i]];
+  if (close) {
+    for (i++; i < line.length && line[i] !== close; i++) if (line[i] === "\\") i++;
+    if (i >= line.length) return null;
+    i++;
     while (line[i] === " " || line[i] === "\t") i++;
   }
-  return line[i] === ")" && target ? target : null;
+  return line[i] === ")" && target ? { target, end: i + 1 } : null;
 }
 
 for (const file of files) {
@@ -66,11 +67,14 @@ for (const file of files) {
       return;
     }
     const text = line.replace(/`[^`]*`/g, "");
-    for (const match of text.matchAll(opener)) {
-      const target = destination(text, match.index + match[0].length);
-      if (!target || external.test(target)) continue;
-      const path = decodeURIComponent(target.split(/[?#]/)[0]);
-      if (path && !existsSync(join(dirname(file), path))) missing.push(`${file}:${i + 1}: ${target}`);
+    opener.lastIndex = 0;
+    while (opener.exec(text)) {
+      const link = destination(text, opener.lastIndex);
+      if (!link) continue;
+      opener.lastIndex = link.end; // a title's text is not scanned for further links
+      if (external.test(link.target)) continue;
+      const path = decodeURIComponent(link.target.split(/[?#]/)[0]);
+      if (path && !existsSync(join(dirname(file), path))) missing.push(`${file}:${i + 1}: ${link.target}`);
     }
   });
 }

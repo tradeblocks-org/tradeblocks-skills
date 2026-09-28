@@ -65,6 +65,14 @@ test('a link destination with balanced or escaped parentheses resolves in full',
   assert.equal(result.status, 0, result.stderr);
 });
 
+test('link-like text inside a title is not checked as a link', async () => {
+  const result = await check({
+    'exists.md': '# here\n',
+    'README.md': '[doc](exists.md "See [other](missing.md)")\n',
+  });
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test('broken relative links still fail, including after each fixed case', async () => {
   const result = await check({
     'docs/run(1).md': '# one\n',
@@ -72,6 +80,7 @@ test('broken relative links still fail, including after each fixed case', async 
       '[plain](missing.md)\n' +
       '[query](missing.yml?plain=1)\n' +
       '[parens](docs/run(9).md)\n' +
+      '[titled](absent.md "the \\"quoted\\" doc")\n' +
       fence('````') + fence('```') + fence('````') +
       '[after fence](gone.md)\n',
   });
@@ -80,6 +89,7 @@ test('broken relative links still fail, including after each fixed case', async 
     'README.md:1: missing.md',
     'README.md:2: missing.yml?plain=1',
     'README.md:3: docs/run(9).md',
-    'README.md:7: gone.md',
+    'README.md:4: absent.md',
+    'README.md:8: gone.md',
   ]);
 });
