@@ -83,9 +83,8 @@ export async function hook(input) {
     await fs.writeFile(path.join(dir, 'responses', rawFile), text, { flag: 'wx', mode: 0o600 });
     await event(dir, { ...entry, rawFile, origin });
     const data = JSON.parse(text);
-    const page = entry.toolName.endsWith('__get_trade_log') && Number.isInteger(data.offset) && Array.isArray(data.items) && Number.isInteger(data.totalCount)
-      ? { offset: data.offset, itemCount: data.items.length, totalCount: data.totalCount, nextOffset: data.nextOffset ?? null }
-      : null;
+    // A trade-log page is decoded here too, so a shape the capture cannot read is refused while the call is recorded, not silently saved.
+    const page = entry.toolName.endsWith('__get_trade_log') ? pageFacts(decodePage(data), entry.toolInput) : null;
     return { captureId: armed.id, origin, toolName: entry.toolName, page };
   } catch (error) {
     const reason = error.message.match(/^([A-Z_]+):/)?.[1] || 'CAPTURE_IO_FAILURE';
@@ -122,18 +121,42 @@ function calendarDate(text) {
   const date = new Date(`${text}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
 }
+// OO's leg string is the cell TradeBlocks reads: its OO leg parser takes exactly '<contracts> <Mon> <day> <strike> <P|C> <STO|BTO> <price>' joined by ' | '.
+const legPattern = /^\d+ [A-Za-z]{3} \d{1,2} \d+(?:\.\d+)? [CP] (?:STO|BTO|STC|BTC) \d+(?:\.\d+)?$/;
 function row(trade, strategy) {
   if (!calendarDate(trade.dateOpened) || !calendarDate(trade.dateClosed)) fail('INVALID_TRADE', 'economic trade needs valid open and close dates');
   if (!Number.isInteger(trade.numberOfContracts) || trade.numberOfContracts < 1) fail('INVALID_TRADE', 'numberOfContracts must be positive integer');
-  if (!Array.isArray(trade.legs)) fail('INVALID_TRADE', 'legs must be an array');
-  // OO sends a nullable property by omitting it, so an absent fee is its documented null: none charged.
-  if ([trade.openingFees, trade.closingFees].some((fee) => fee != null && (typeof fee !== 'number' || !Number.isFinite(fee)))) fail('UNKNOWN_FEES', 'OO fee fields must be numbers, null or omitted (no fee charged)');
-  // OO's own P/L % (percent units, on net P/L) is written verbatim and blank when OO omits it; TradeBlocks recomputes only a blank.
-  if (trade.profitPercentage != null && (typeof trade.profitPercentage !== 'number' || !Number.isFinite(trade.profitPercentage))) fail('INVALID_ECONOMICS', 'profitPercentage must be a finite number, null or omitted');
-  for (const leg of trade.legs) dollars(leg.pricePerContract, 'leg pricePerContract');
-  const legs = trade.legs.map((leg) => `${leg.buySell} ${leg.numberOfContracts} ${leg.expiration ?? ''} ${leg.strike} ${leg.optionType} @ ${dollars(leg.pricePerContract, 'leg pricePerContract')}`).join('; ');
-  const fields = [trade.dateOpened, trade.timeOpened, trade.openingUnderlyingPrice, legs, dollars(trade.premiumPerContract, 'premiumPerContract'), trade.closingUnderlyingPrice, trade.dateClosed, trade.timeClosed, dollars(trade.averageClosingCostPerContract, 'averageClosingCostPerContract'), trade.reasonClosed, dollars(trade.profit, 'profit'), 'net_includes_fees', trade.profitPercentage, trade.numberOfContracts, trade.fundsAtClose, trade.buyingPowerRequired, strategy, dollars(trade.openingFees ?? 0, 'openingFees'), dollars(trade.closingFees ?? 0, 'closingFees')];
+  if (typeof trade.legs !== 'string' || !trade.legs.split(' | ').every((leg) => legPattern.test(leg))) fail('INVALID_LEGS', 'legs must be OO trade-log leg text: "<contracts> <Mon> <day> <strike> <P|C> <STO|BTO> <price>" joined by " | "');
+  // The fee columns are present only when the backtest charged fees (and a cell may be null): an absent or null fee is none charged.
+  if ([trade.openingFees, trade.closingFees].some((fee) => fee != null && (typeof fee !== 'number' || !Number.isFinite(fee)))) fail('UNKNOWN_FEES', 'OO fee cells must be numbers or null (no fee charged)');
+  // OO's own P/L % (percent units, on net P/L) is written verbatim and blank when OO's cell is null (no premium to measure against).
+  if (trade.profitPercentage != null && (typeof trade.profitPercentage !== 'number' || !Number.isFinite(trade.profitPercentage))) fail('INVALID_ECONOMICS', 'profitPercentage must be a finite number or null');
+  const fields = [trade.dateOpened, trade.timeOpened, trade.openingUnderlyingPrice, trade.legs, dollars(trade.premiumPerContract, 'premiumPerContract'), trade.closingUnderlyingPrice, trade.dateClosed, trade.timeClosed, dollars(trade.averageClosingCostPerContract, 'averageClosingCostPerContract'), trade.reasonClosed, dollars(trade.profit, 'profit'), 'net_includes_fees', trade.profitPercentage, trade.numberOfContracts, trade.fundsAtClose, trade.buyingPowerRequired, strategy, dollars(trade.openingFees ?? 0, 'openingFees'), dollars(trade.closingFees ?? 0, 'closingFees')];
   return fields.map(csv).join(',');
+}
+// get_trade_log rows are arrays named by the response's own tradeColumns header; nothing here depends on column position.
+// Every column and its meaning is from OO's tool catalog (2026-09-29). Columns marked optional there are absent when the log lacks them.
+const requiredTradeColumns = ['dateOpened', 'timeOpened', 'dateClosed', 'timeClosed', 'daysInTrade', 'underlying', 'legs', 'numberOfContracts', 'premiumPerContract', 'averageClosingCostPerContract', 'openingUnderlyingPrice', 'closingUnderlyingPrice', 'reasonClosed', 'profit', 'profitPercentage', 'fundsAtClose', 'buyingPowerRequired'];
+const optionalTradeColumns = ['strategyId', 'strategyName', 'openingFees', 'closingFees', 'openingVix', 'closingVix', 'openingIvRank', 'openingIvPercentile', 'openingIv30', 'openingIv9D', 'openingHv30', 'openingIv9DIv30Ratio', 'openingHv30Iv30Ratio', 'shortLongRatio', 'closingShortLongRatio', 'gap', 'intradayMovement', 'highestProfitPercentage', 'highestLossPercentage', 'isIgnored', 'wasAdjusted'];
+function decodePage(data) {
+  if (!Array.isArray(data?.tradeColumns) || !Array.isArray(data.trades)) fail('INVALID_PAGE', 'response has no tradeColumns header and trades rows');
+  const columns = data.tradeColumns;
+  if (columns.some((name) => typeof name !== 'string') || new Set(columns).size !== columns.length) fail('INVALID_PAGE', 'tradeColumns must be unique strings');
+  const unknown = columns.filter((name) => !requiredTradeColumns.includes(name) && !optionalTradeColumns.includes(name));
+  if (unknown.length) fail('UNKNOWN_COLUMN', `tradeColumns has columns this capture does not recognise: ${unknown.join(', ')}`);
+  const missing = requiredTradeColumns.filter((name) => !columns.includes(name));
+  if (missing.length) fail('MISSING_COLUMN', `tradeColumns lacks required columns: ${missing.join(', ')}`);
+  if (!Number.isInteger(data.offset) || !Number.isInteger(data.totalCount)) fail('INVALID_PAGE', 'offset and totalCount must be integers');
+  const trades = data.trades.map((cells) => {
+    if (!Array.isArray(cells) || cells.length !== columns.length) fail('INVALID_PAGE', `a trade row does not have one cell per tradeColumns entry (${columns.length})`);
+    return Object.fromEntries(columns.map((name, at) => [name, cells[at]]));
+  });
+  for (const trade of trades) for (const flag of ['isIgnored', 'wasAdjusted']) if (trade[flag] != null && typeof trade[flag] !== 'boolean') fail('INVALID_PAGE', `${flag} must be true, false or null`);
+  return { columns, trades, offset: data.offset, totalCount: data.totalCount, nextOffset: data.nextOffset ?? null, sortedBy: data.sortedBy, direction: data.direction };
+}
+function pageFacts(page, args) {
+  const source = sourceKeys.find((key) => args?.[key] != null);
+  return { offset: page.offset, tradeCount: page.trades.length, totalCount: page.totalCount, nextOffset: page.nextOffset, sortedBy: page.sortedBy, direction: page.direction, source: source ? `${source}=${args[source]}` : null };
 }
 const curveColumns = ['date', 'netLiquidity', 'startingLiquidity', 'realizedFunds', 'tradingFunds', 'profitLoss', 'profitLossPercentage', 'drawdownPercentage'];
 const dailyColumns = ['Date', 'Net Liquidity', 'Current Funds', 'Withdrawn', 'Trading Funds', 'P/L', 'P/L %', 'Drawdown %'];
@@ -284,11 +307,15 @@ export async function verify(id, chosenName) {
     if (args[sourceKey] !== sourceId || sourceKeys.some((key) => key !== sourceKey && args[key] != null)) fail('SOURCE_MISMATCH', 'trade-log page from another source');
     if (['outcome', 'reasonClosed', 'strategyIds'].some((key) => Object.hasOwn(args, key))) fail('FILTERED_LOG', 'trade-log filter arguments are not permitted');
     if (Object.entries(sort).some(([key, value]) => args[key] !== value)) fail('SORT_MISMATCH', 'limit/sort differs from fixed ascending opening order');
-    if (!Number.isInteger(args.offset) || args.offset < 0 || page.data.offset !== args.offset || !Array.isArray(page.data.items) || !Number.isInteger(page.data.totalCount)) fail('INVALID_PAGE', 'offset, count or items malformed');
-    if (page.data.sortedBy !== sort.sortBy || page.data.direction !== sort.direction) fail('SORT_MISMATCH', 'OO returned a different sort');
+    if (!Number.isInteger(args.offset) || args.offset < 0 || page.data.offset !== args.offset) fail('INVALID_PAGE', 'offset does not match the recorded call');
+    page.table = decodePage(page.data);
+    if (page.table.sortedBy !== sort.sortBy || page.table.direction !== sort.direction) fail('SORT_MISMATCH', 'OO returned a different sort');
   }
   pages.sort((a, b) => a.toolInput.offset - b.toolInput.offset);
   for (let i = 1; i < pages.length; i++) if (pages[i].toolInput.offset === pages[i - 1].toolInput.offset) fail('DUPLICATE_PAGE', `offset ${pages[i].toolInput.offset} repeated`);
+  // OO fixes the columns for the whole log, so every page must carry the same header.
+  if (pages.some((page) => page.table.columns.join() !== pages[0].table.columns.join())) fail('COLUMN_MISMATCH', 'tradeColumns differs between pages');
+  if (sourceKey === 'savedPortfolioId' && !pages[0].table.columns.includes('strategyId')) fail('MISSING_COLUMN', 'a portfolio log must carry strategyId');
   let offset = 0;
   const count = pages[0].data.totalCount;
   const all = [];
@@ -297,10 +324,10 @@ export async function verify(id, chosenName) {
     if (page.toolInput.offset > offset) fail('MISSING_PAGE', `expected offset ${offset}, got ${page.toolInput.offset}`);
     if (page.data.totalCount !== count) fail('UNSTABLE_TOTAL', 'totalCount changed between pages');
     const nextOffset = page.data.nextOffset ?? null;
-    if (page.data.items.length > 100 || (nextOffset !== null && page.data.items.length !== 100)) fail('INVALID_PAGE', 'non-terminal page must contain 100 trades');
-    offset += page.data.items.length;
+    if (page.table.trades.length > 100 || (nextOffset !== null && page.table.trades.length !== 100)) fail('INVALID_PAGE', 'non-terminal page must contain 100 trades');
+    offset += page.table.trades.length;
     if (nextOffset !== (offset === count ? null : offset)) fail('INTERRUPTED_CAPTURE', `nextOffset incorrect or terminal page absent at ${offset}`);
-    all.push(...page.data.items);
+    all.push(...page.table.trades);
   }
   if (offset !== count || pages.at(-1).data.nextOffset != null) fail('INTERRUPTED_CAPTURE', 'last page not terminal');
   const economic = all.filter((item) => item.isIgnored !== true);
@@ -362,7 +389,7 @@ async function combinedArm(id, label) {
   const server = headline.toolName.slice(0, headline.toolName.lastIndexOf('__'));
   const pages = events.filter((entry) => entry.toolName.endsWith('__get_trade_log')).sort((a, b) => a.toolInput.offset - b.toolInput.offset);
   const trades = (await Promise.all(pages.map((page) => captureJson(path.join(dir, 'responses', page.rawFile)))))
-    .flatMap((page) => page.items).filter((trade) => trade.isIgnored !== true);
+    .flatMap((page) => decodePage(page).trades).filter((trade) => trade.isIgnored !== true);
   const profit = trades.reduce((total, trade) => total + money(trade.profit, 'trade profit'), 0);
   if (trades.length !== summary.trades || profit !== money(Number(summary.ooProfit), 'verified profit')) fail('ARM_MISMATCH', `${label} does not reconcile`);
   // The arms must be alternatives on one basis. OO run headlines report starting funds; a date range only when OO supplies one.

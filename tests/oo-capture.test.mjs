@@ -11,8 +11,15 @@ process.env.XDG_DATA_HOME = home;
 const { start, stop, hook, verify, combine, list, remove } = await import('../scripts/oo-capture.mjs');
 after(async () => fs.rm(home, { recursive: true, force: true }));
 let serial = 0;
+// A trade as the logical record of one get_trade_log row; page() writes it in OO's table shape (tradeColumns header + row arrays).
 function trade(n, overrides = {}) {
-  return { dateOpened: '2026-01-02', timeOpened: '10:00:00', dateClosed: '2026-01-03', timeClosed: '10:01:00', numberOfContracts: 2, legs: [{ buySell: 'Sell', numberOfContracts: 2, expiration: '2026-02-01', strike: 5000, optionType: 'Put', pricePerContract: 125 }], openingUnderlyingPrice: 5000, closingUnderlyingPrice: 5001, averageClosingCostPerContract: 10, premiumPerContract: 200, profit: n, openingFees: 1.25, closingFees: 1.25, isIgnored: false, ...overrides };
+  return { dateOpened: '2026-01-02', timeOpened: '10:00:00', dateClosed: '2026-01-03', timeClosed: '10:01:00', daysInTrade: 1, underlying: 'SPX', numberOfContracts: 2, legs: '2 Feb 1 5000 P STO 1.25 | 2 Feb 1 4990 P BTO 0.50', openingUnderlyingPrice: 5000, closingUnderlyingPrice: 5001, reasonClosed: 'Profit Target', averageClosingCostPerContract: 10, premiumPerContract: 200, profit: n, profitPercentage: null, fundsAtClose: 1000, buyingPowerRequired: 500, openingFees: 1.25, closingFees: 1.25, ...overrides };
+}
+// OO's column order as observed 2026-09-29 (Data's raw tapes); a column appears only when some row carries it, as OO decides per log.
+const oobColumns = ['dateOpened', 'timeOpened', 'dateClosed', 'timeClosed', 'daysInTrade', 'underlying', 'legs', 'numberOfContracts', 'premiumPerContract', 'averageClosingCostPerContract', 'openingUnderlyingPrice', 'closingUnderlyingPrice', 'reasonClosed', 'profit', 'profitPercentage', 'fundsAtClose', 'buyingPowerRequired', 'strategyId', 'strategyName', 'openingFees', 'closingFees', 'isIgnored', 'wasAdjusted'];
+function page(rows, { order = oobColumns, ...rest } = {}) {
+  const present = rows.length ? [...new Set([...order, ...rows.flatMap(Object.keys)])].filter((name) => rows.some((row) => Object.hasOwn(row, name))) : order.slice(0, 17);
+  return { tradeColumns: present, trades: rows.map((row) => present.map((name) => row[name] ?? null)), ...rest };
 }
 function event(session, name, toolInput, output) {
   return { tool_name: `mcp__my_oo__${name}`, session_id: session, tool_input: toolInput, tool_response: JSON.stringify(output), tool_use_id: `toolu_${serial++}` };
@@ -25,7 +32,7 @@ async function capture({ rows = [trade(19), trade(900, { isIgnored: true })], he
   const chunks = pages || [rows];
   for (let i = 0, offset = 0; i < chunks.length; i++) {
     const args = { ...source, sortBy: 'opened', direction: 'asc', limit: 100, offset };
-    const data = { offset, items: chunks[i], totalCount: chunks.reduce((sum, chunk) => sum + chunk.length, 0), sortedBy: 'opened', direction: 'asc', nextOffset: i === chunks.length - 1 ? null : offset + chunks[i].length };
+    const data = { ...page(chunks[i]), offset, totalCount: chunks.reduce((sum, chunk) => sum + chunk.length, 0), sortedBy: 'opened', direction: 'asc', nextOffset: i === chunks.length - 1 ? null : offset + chunks[i].length };
     pageMutator?.(args, data, i);
     await hook(event(session, 'get_trade_log', args, data));
     offset += chunks[i].length;
@@ -140,11 +147,11 @@ test('a strategy name with a line break is refused before any CSV is written', a
   assert.equal((await verify(fromOo.id, 'Iron Fly')).strategy.names[0].name, 'Iron Fly');
 });
 
-async function portfolioCapture({ names = ['Iron Fly', 'Iron Fly', 'Quiet'], rows, results, headline = {}, mutatePage, mutateCurve, duplicatePage = false } = {}) {
+async function portfolioCapture({ names = ['Iron Fly', 'Iron Fly', 'Quiet'], memberIds, rows, results, headline = {}, mutatePage, mutateCurve, duplicatePage = false } = {}) {
   const session = `session_${serial++}`;
   const { id } = await start(session);
   const source = { savedPortfolioId: 'portfolio-1' };
-  const members = names.map((name, i) => ({ savedBacktestId: `member-${i + 1}`, name }));
+  const members = names.map((name, i) => ({ savedBacktestId: memberIds?.[i] ?? `member-${i + 1}`, name }));
   const trades = rows ?? [trade(12.25, { strategyId: 'member-1' }), trade(-2, { strategyId: 'member-2' }),
     trade(900, { strategyId: 'member-1', isIgnored: true })];
   const strategyResults = results ?? members.map((member, i) => ({ savedBacktestId: member.savedBacktestId,
@@ -153,10 +160,10 @@ async function portfolioCapture({ names = ['Iron Fly', 'Iron Fly', 'Quiet'], row
     settings: { rangeStart: '2026-01-02', rangeEnd: '2026-01-05' }, strategies: members,
     result: { numberOfTrades: 2, numberOfOpenTrades: 1, profit: 10.25, strategyResults, ...headline } }));
   const args = { ...source, ...sortFixture(), offset: 0 };
-  const page = { offset: 0, totalCount: trades.length, items: trades, sortedBy: 'opened', direction: 'asc', nextOffset: null };
-  mutatePage?.(args, page);
-  await hook(event(session, 'get_trade_log', args, page));
-  if (duplicatePage) await hook(event(session, 'get_trade_log', args, page));
+  const page1 = { ...page(trades), offset: 0, totalCount: trades.length, sortedBy: 'opened', direction: 'asc', nextOffset: null };
+  mutatePage?.(args, page1);
+  await hook(event(session, 'get_trade_log', args, page1));
+  if (duplicatePage) await hook(event(session, 'get_trade_log', args, page1));
   const curveArgs = { parameters: { ...source, seriesStart: '2026-01-02', seriesEnd: '2026-01-05' } };
   const curveData = { seriesStart: '2026-01-02', seriesEnd: '2026-01-05', pointColumns,
     points: [['2026-01-02', 1000, 1000, 1000, 1000, 0, 0, 0],
@@ -231,7 +238,7 @@ for (const [name, setup, reason] of [
 }
 test('hook outside start and after stop saves nothing', async () => {
   const session = `session_${serial++}`;
-  const input = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1' }, { items: [] });
+  const input = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1' }, { tradeColumns: [], trades: [] });
   assert.equal(await hook(input), null);
   const { id } = await start(session);
   await stop(session);
@@ -282,14 +289,14 @@ refusal('omitted nextOffset before total count', { pageMutator: (args, data) => 
 test('hook message supplies page facts without opening saved result', async () => {
   const session = `session_${serial++}`;
   await start(session);
-  const first = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1', offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' }, { offset: 0, items: Array(100).fill(trade(0)), totalCount: 101, nextOffset: 100, sortedBy: 'opened', direction: 'asc' });
+  const first = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1', offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' }, { ...page(Array(100).fill(trade(0))), offset: 0, totalCount: 101, nextOffset: 100, sortedBy: 'opened', direction: 'asc' });
   const firstCall = spawnSync(process.execPath, [new URL('../scripts/oo-capture-hook.mjs', import.meta.url).pathname], { input: JSON.stringify(first), encoding: 'utf8', env: process.env });
   assert.equal(firstCall.status, 0, firstCall.stderr);
-  assert.match(JSON.parse(firstCall.stdout).hookSpecificOutput.additionalContext, /Page offset=0, items=100, totalCount=101, nextOffset=100/);
-  const input = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1', offset: 100, limit: 100, sortBy: 'opened', direction: 'asc' }, { offset: 100, items: [trade(19)], totalCount: 101, sortedBy: 'opened', direction: 'asc' });
+  assert.match(JSON.parse(firstCall.stdout).hookSpecificOutput.additionalContext, /Page savedBacktestId=backtest-1, sort=opened asc, offset=0, trades=100, totalCount=101, nextOffset=100\./);
+  const input = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1', offset: 100, limit: 100, sortBy: 'opened', direction: 'asc' }, { ...page([trade(19)]), offset: 100, totalCount: 101, sortedBy: 'opened', direction: 'asc' });
   const completed = spawnSync(process.execPath, [new URL('../scripts/oo-capture-hook.mjs', import.meta.url).pathname], { input: JSON.stringify(input), encoding: 'utf8', env: process.env });
   assert.equal(completed.status, 0, completed.stderr);
-  assert.match(JSON.parse(completed.stdout).hookSpecificOutput.additionalContext, /Page offset=100, items=1, totalCount=101, nextOffset=terminal/);
+  assert.match(JSON.parse(completed.stdout).hookSpecificOutput.additionalContext, /Page savedBacktestId=backtest-1, sort=opened asc, offset=100, trades=1, totalCount=101, nextOffset=terminal\./);
   await stop(session);
 });
 test('OO null fees mean no fee charged, preserve reported net profit', async () => {
@@ -299,15 +306,14 @@ test('OO null fees mean no fee charged, preserve reported net profit', async () 
   assert.match(csv, /,19\.00,net_includes_fees,,2,/);
   assert.match(csv, /,0\.00,0\.00\n/);
 });
-test('omitted OO fee field means no fee charged, as OO omits null properties', async () => {
-  // Observed on OO staging 2026-09-28: every trade of an all-expired 0DTE backtest omits closingFees
-  // (no closing order, so no closing fee), and no trade-log property is ever sent as an explicit null.
+test('OO fee columns absent (no fees charged) mean none charged', async () => {
   const item = trade(19);
+  delete item.openingFees;
   delete item.closingFees;
   const { id } = await capture({ rows: [item] });
   const csv = await fs.readFile((await verify(id)).csvPath, 'utf8');
   assert.match(csv, /,19\.00,net_includes_fees,,2,/);
-  assert.match(csv, /,1\.25,0\.00\n/);
+  assert.match(csv, /,0\.00,0\.00\n/);
 });
 refusal('non-numeric OO fee', { rows: [trade(19, { closingFees: '1.25' })] }, 'UNKNOWN_FEES');
 refusal('filter key present but null', { pageMutator: (args) => { args.outcome = null; } }, 'FILTERED_LOG');
@@ -322,16 +328,16 @@ test('OO profitPercentage is written verbatim as P/L %, including zero, with net
   assert.deepEqual([result.trades, result.ooProfit], [2, '19.00']);
   assert.deepEqual(plPct(await fs.readFile(result.csvPath, 'utf8')), ['4.75', '0']);
 });
-test('omitted OO profitPercentage leaves P/L % blank for TradeBlocks to compute', async () => {
-  const { id } = await capture({ rows: [trade(19, { profitPercentage: -1.55 }), trade(0)], headline: { numberOfTrades: 2 } });
+test('a null OO profitPercentage cell leaves P/L % blank for TradeBlocks to compute', async () => {
+  const { id } = await capture({ rows: [trade(19, { profitPercentage: -1.55 }), trade(0, { profitPercentage: null })], headline: { numberOfTrades: 2 } });
   assert.deepEqual(plPct(await fs.readFile((await verify(id)).csvPath, 'utf8')), ['-1.55', '']);
 });
 refusal('non-numeric OO profitPercentage', { rows: [trade(19, { profitPercentage: 'NaN' })] }, 'INVALID_ECONOMICS');
 test('OO profitPercentage that overflows to Infinity is refused before any CSV is written', async () => {
   const { id, session } = await capture({ pages: [], stopCapture: false });
-  const page = { offset: 0, items: [trade(19, { profitPercentage: 0 })], totalCount: 1, sortedBy: 'opened', direction: 'asc', nextOffset: null };
-  const call = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1', ...sortFixture(), offset: 0 }, page);
-  await hook({ ...call, tool_response: call.tool_response.replace('"profitPercentage":0', '"profitPercentage":1e999') });
+  const page1 = { ...page([trade(19, { profitPercentage: 12345.5 })]), offset: 0, totalCount: 1, sortedBy: 'opened', direction: 'asc', nextOffset: null };
+  const call = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1', ...sortFixture(), offset: 0 }, page1);
+  await hook({ ...call, tool_response: call.tool_response.replace('12345.5', '1e999') });
   await stop(session);
   await assert.rejects(verify(id), /^Error: INVALID_ECONOMICS: profitPercentage/);
   await assert.rejects(fs.access(path.join(home, 'tradeblocks', 'oo-captures', id, 'tradelog.csv')));
@@ -343,7 +349,7 @@ test('expired saved file is a recorded named failure, not publication', async ()
   const fileDir = path.join(parent, session, 'tool-results');
   await fs.mkdir(fileDir, { recursive: true });
   const file = path.join(fileDir, 'mcp-my_oo-get_trade_log-123.txt');
-  await fs.writeFile(file, JSON.stringify({ offset: 0, items: [] }));
+  await fs.writeFile(file, JSON.stringify({ ...page([]), offset: 0, totalCount: 0 }));
   const old = new Date('2001-01-01');
   await fs.utimes(file, old, old);
   const result = await hook({ ...event(session, 'get_trade_log', {}, {}), transcript_path: path.join(parent, `${session}.jsonl`), tool_response: `Full result saved to ${file}` });
@@ -358,7 +364,7 @@ test('MCP text-array inline and saved-file responses retain exact JSON bytes', a
   const fileDir = path.join(parent, session, 'tool-results');
   await fs.mkdir(fileDir, { recursive: true });
   const saved = path.join(fileDir, 'mcp-my_oo-get_trade_log-123.txt');
-  const original = '{ "offset": 0, "items": [1], "note": "é" }\n';
+  const original = `{ "tradeColumns": ${JSON.stringify(page([trade(1)]).tradeColumns)}, "trades": [], "offset": 0, "totalCount": 0, "note": "é" }\n`;
   await fs.writeFile(saved, original);
   const base = { ...event(session, 'get_trade_log', {}, {}), transcript_path: path.join(parent, `${session}.jsonl`) };
   assert.equal((await hook({ ...base, tool_response: [{ type: 'text', text: original }] })).origin, 'inline');
@@ -372,7 +378,7 @@ test('runId source binds results and pages without a saved-backtest ID', async (
   const session = `session_${serial++}`;
   const { id } = await start(session);
   await hook(event(session, 'get_backtest_results', { runId: 'run-7' }, { numberOfTrades: 1, numberOfOpenTrades: 3, profit: 19 }));
-  await hook(event(session, 'get_trade_log', { runId: 'run-7', offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' }, { offset: 0, totalCount: 1, items: [trade(19)], nextOffset: null, sortedBy: 'opened', direction: 'asc' }));
+  await hook(event(session, 'get_trade_log', { runId: 'run-7', offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' }, { ...page([trade(19)]), offset: 0, totalCount: 1, nextOffset: null, sortedBy: 'opened', direction: 'asc' }));
   await stop(session);
   assert.deepEqual((await verify(id)).source, { runId: 'run-7' });
   assert.equal((await verify(id)).curveMissingReason, 'OO headline reports no source date range');
@@ -382,7 +388,7 @@ test('run without OO-reported range refuses captured curve rather than silently 
   const { id } = await start(session);
   await hook(event(session, 'get_backtest_results', { runId: 'run-7' }, { numberOfTrades: 1, numberOfOpenTrades: 0, profit: 19 }));
   await hook(event(session, 'get_trade_log', { runId: 'run-7', offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' },
-    { offset: 0, totalCount: 1, items: [trade(19)], sortedBy: 'opened', direction: 'asc' }));
+    { ...page([trade(19)]), offset: 0, totalCount: 1, sortedBy: 'opened', direction: 'asc' }));
   await hook(event(session, 'get_equity_curve', { parameters: { runId: 'run-7', seriesStart: '2026-01-02', seriesEnd: '2026-01-05' } }, {}));
   await stop(session);
   await assert.rejects(verify(id), /MISSING_CURVE_RANGE:/);
@@ -412,7 +418,7 @@ test('saved result under a session path with spaces is captured; one outside the
   const fileDir = path.join(parent, session, 'tool-results');
   await fs.mkdir(fileDir, { recursive: true });
   const saved = path.join(fileDir, 'mcp-my_oo-get_trade_log-9.txt');
-  await fs.writeFile(saved, '{"offset":0,"items":[]}');
+  await fs.writeFile(saved, JSON.stringify({ ...page([]), offset: 0, totalCount: 0 }));
   const base = { ...event(session, 'get_trade_log', {}, {}), transcript_path: path.join(parent, `${session}.jsonl`) };
   assert.equal((await hook({ ...base, tool_response: `Output has been saved to ${saved}.` })).origin, 'saved-file');
   const foreignDir = path.join(home, 'other-session', 'tool-results');
@@ -432,8 +438,8 @@ test('pages from another OO server with a colliding id and matching totals refus
   const session = `session_${serial++}`;
   const { id } = await start(session);
   await hook(event(session, 'get_backtest_results', { runId: 'run-7' }, { numberOfTrades: 1, numberOfOpenTrades: 0, profit: 19 }));
-  const page = event(session, 'get_trade_log', { runId: 'run-7', offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' }, { offset: 0, totalCount: 1, items: [trade(19, { strike: 4000 })], nextOffset: null, sortedBy: 'opened', direction: 'asc' });
-  await hook({ ...page, tool_name: 'mcp__oo_prod__get_trade_log' });
+  const page1 = event(session, 'get_trade_log', { runId: 'run-7', offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' }, { ...page([trade(19)]), offset: 0, totalCount: 1, nextOffset: null, sortedBy: 'opened', direction: 'asc' });
+  await hook({ ...page1, tool_name: 'mcp__oo_prod__get_trade_log' });
   await stop(session);
   await assert.rejects(verify(id), /SOURCE_MISMATCH:/);
 });
@@ -517,7 +523,7 @@ async function runCapture(runId, profits, server = 'my_oo', headline = {}) {
   const send = (name, args, response) => hook({ ...event(session, name, args, response), tool_name: `mcp__${server}__${name}` });
   await send('get_backtest_results', { runId }, { numberOfTrades: profits.length, numberOfOpenTrades: 0, profit: profits.reduce((sum, n) => sum + n, 0), ...headline });
   await send('get_trade_log', { runId, offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' },
-    { offset: 0, totalCount: profits.length, items: profits.map((n) => trade(n)), nextOffset: null, sortedBy: 'opened', direction: 'asc' });
+    { ...page(profits.map((n) => trade(n))), offset: 0, totalCount: profits.length, nextOffset: null, sortedBy: 'opened', direction: 'asc' });
   await stop(session);
   return id;
 }
@@ -588,4 +594,101 @@ test('combine refuses missing, unverified, duplicate run, cross-server, differen
     [[a, 'Best', same, 'best'], 'LABEL_COLLISION'],
   ]) await assert.rejects(combine(...ids), (error) => error.message.startsWith(`${reason}:`));
   assert.equal((await list()).length, before);
+});
+
+// --- OO trade-log table (tradeColumns + trades), 2026-09-29 -------------------------------------------------------
+// Real headers and rows recorded from OO staging; only the row count is trimmed, so headlines below are built from the kept rows.
+const tapes = JSON.parse(await fs.readFile(new URL('./fixtures/oo-trade-log-tables.json', import.meta.url), 'utf8'));
+function tableTrades(table) { return table.trades.map((cells) => Object.fromEntries(table.tradeColumns.map((name, at) => [name, cells[at]]))); }
+async function tapeRun(table, mutate) {
+  const rows = tableTrades(table);
+  const cents = rows.reduce((sum, item) => sum + Math.round(item.profit * 100), 0);
+  const session = `session_${serial++}`;
+  const { id } = await start(session);
+  await hook(event(session, 'get_backtest_results', { runId: 'run-tape' }, { numberOfTrades: rows.length, numberOfOpenTrades: 0, profit: cents / 100 }));
+  const data = { ...structuredClone(table), offset: 0, totalCount: rows.length, sortedBy: 'opened', direction: 'asc', nextOffset: null, note: null };
+  mutate?.(data);
+  const outcome = await hook(event(session, 'get_trade_log', { runId: 'run-tape', offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' }, data));
+  await stop(session);
+  return { id, outcome };
+}
+test('real OO trade-log table (no strategy, ignored or adjusted columns) publishes OO legs verbatim, cents exact, null-safe', async () => {
+  const { id } = await tapeRun(tapes.scratchRun);
+  const summary = await verify(id);
+  assert.deepEqual([summary.trades, summary.ooProfit, summary.ignoredRows], [2, '5248.20', 0]);
+  const [header, ...lines] = parseCsv(await fs.readFile(summary.csvPath, 'utf8'));
+  assert.deepEqual(lines.map((cells) => cells[header.indexOf('Legs')]), ['5 Aug 10 7410 P BTO 15.65 | 5 Aug 10 7610 C BTO 13.50', '5 Aug 5 7420 P BTO 6.00 | 5 Aug 5 7600 C BTO 3.70 | 5 Aug 10 7420 P STO 17.10 | 5 Aug 10 7600 C STO 16.60']);
+  assert.deepEqual(lines.map((cells) => cells[header.indexOf('P/L %')]), ['-0.52', '44.74']);
+  assert.deepEqual(lines.map((cells) => cells[header.indexOf('P/L')]), ['-75.60', '5323.80']);
+  assert.deepEqual(lines.map((cells) => cells[header.indexOf('Premium')]), ['-2935.00', '2380.00']);
+});
+test('OO trade columns are read by header name, so a reordered header gives the same CSV', async () => {
+  const straight = await verify((await tapeRun(tapes.savedBacktest)).id);
+  const reversed = await verify((await tapeRun(tapes.savedBacktest, (data) => {
+    data.tradeColumns.reverse();
+    data.trades.forEach((cells) => cells.reverse());
+  })).id);
+  assert.equal(await fs.readFile(reversed.csvPath, 'utf8'), await fs.readFile(straight.csvPath, 'utf8'));
+  assert.equal(reversed.ooProfit, '11262.80');
+});
+test('a null profitPercentage cell in a real OO portfolio table leaves P/L % blank and members reconcile', async () => {
+  const rows = tableTrades(tapes.portfolio);
+  const cents = (id) => rows.filter((item) => item.strategyId === id).reduce((sum, item) => sum + Math.round(item.profit * 100), 0) / 100;
+  const ids = ['95yq0M3GrgcxMAr0VIxw', 'HAYQe9smwGdE4cZKRvTp'];
+  const id = await portfolioCapture({ names: ['Alpha', 'Beta'], memberIds: ids, mutatePage: (args, data) => Object.assign(data, structuredClone(tapes.portfolio), { totalCount: 3 }),
+    results: ids.map((member, i) => ({ savedBacktestId: member, name: ['Alpha', 'Beta'][i], numberOfTrades: rows.filter((item) => item.strategyId === member).length, profit: cents(member) })),
+    headline: { numberOfTrades: 3, profit: cents(ids[0]) + cents(ids[1]) } });
+  const summary = await verify(id);
+  assert.deepEqual(summary.members.map((member) => [member.trades, member.ooProfit]), [[1, '-5120.48'], [2, '-118.16']]);
+  const [header, ...lines] = parseCsv(await fs.readFile(summary.csvPath, 'utf8'));
+  assert.deepEqual(lines.map((cells) => cells[header.indexOf('P/L %')]), ['-52.46', '52.53', '']);
+  assert.deepEqual(lines.map((cells) => cells[header.indexOf('Strategy')]), ['Alpha', 'Beta', 'Beta']);
+});
+test('a multi-page OO table log publishes in one fixed sort, and pages must share one header', async () => {
+  const pages = [Array.from({ length: 100 }, () => trade(1)), [trade(19)]];
+  const { id } = await capture({ pages, headline: { numberOfTrades: 101, profit: 119 } });
+  assert.deepEqual([(await verify(id)).trades, (await verify(id)).ooProfit], [101, '119.00']);
+  const mixed = await capture({ pages, headline: { numberOfTrades: 101, profit: 119 }, pageMutator: (args, data, i) => { if (i === 1) { data.tradeColumns = [...data.tradeColumns].reverse(); data.trades = data.trades.map((cells) => [...cells].reverse()); } } });
+  await assert.rejects(verify(mixed.id), /^Error: COLUMN_MISMATCH:/);
+});
+test('an OO ignored trade (isIgnored column present) is excluded from count and profit but reported in ignoredRows', async () => {
+  const { id } = await tapeRun(tapes.portfolioWithNullPercentage, (data) => {
+    data.tradeColumns.push('isIgnored');
+    data.trades = [[...data.trades[0], false], [...data.trades[0], true]];
+    data.totalCount = 2;
+  });
+  const summary = await verify(id);
+  assert.deepEqual([summary.trades, summary.ignoredRows, summary.ooProfit], [1, 1, '-1295.84']);
+});
+refusal('unknown OO trade column', { pageMutator: (args, data) => { data.tradeColumns.push('surprise'); data.trades.forEach((cells) => cells.push(1)); } }, 'UNKNOWN_COLUMN');
+refusal('missing required OO trade column', { pageMutator: (args, data) => { const at = data.tradeColumns.indexOf('profit'); data.tradeColumns.splice(at, 1); data.trades.forEach((cells) => cells.splice(at, 1)); } }, 'MISSING_COLUMN');
+refusal('trade row narrower than its header', { pageMutator: (args, data) => { data.trades[0].pop(); } }, 'INVALID_PAGE');
+refusal('old object-row items shape', { pageMutator: (args, data) => { data.items = []; delete data.tradeColumns; delete data.trades; } }, 'INVALID_PAGE');
+refusal('duplicate OO trade column', { pageMutator: (args, data) => { data.tradeColumns[1] = 'dateOpened'; } }, 'INVALID_PAGE');
+refusal('isIgnored that is not a boolean', { rows: [trade(19, { isIgnored: 'true' })] }, 'INVALID_PAGE');
+refusal('leg text OO would not write', { rows: [trade(19, { legs: 'SPX 5000P/4990P' })] }, 'INVALID_LEGS');
+refusal('structured legs', { rows: [trade(19, { legs: [{ strike: 5000 }] })] }, 'INVALID_LEGS');
+test('a portfolio log without strategyId refuses by column name', async () => {
+  const id = await portfolioCapture({ rows: [trade(12.25), trade(-2)] });
+  await assert.rejects(verify(id), /^Error: MISSING_COLUMN: a portfolio log must carry strategyId/);
+});
+test('hook names an unreadable trade-log page as a failure instead of giving no page facts', async () => {
+  const session = `session_${serial++}`;
+  const { id } = await start(session);
+  const bad = { ...page([trade(19)]), offset: 0, totalCount: 1, sortedBy: 'opened', direction: 'asc' };
+  bad.tradeColumns.push('surprise');
+  bad.trades[0].push(1);
+  const outcome = await hook(event(session, 'get_trade_log', { savedBacktestId: 'backtest-1', offset: 0, limit: 100, sortBy: 'opened', direction: 'asc' }, bad));
+  assert.equal(outcome.failure, 'UNKNOWN_COLUMN');
+  assert.equal(outcome.page, undefined);
+  await stop(session);
+  await assert.rejects(verify(id), /^Error: UNKNOWN_COLUMN:/);
+});
+test('combine reads its arms from the OO table by header name', async () => {
+  const a = await runCapture('run-h1', [19, 1]);
+  const b = await runCapture('run-h2', [8]);
+  await verify(a);
+  await verify(b);
+  const result = await combine(a, 'best', b, 'centre');
+  assert.deepEqual(result.arms.map((arm) => [arm.trades, arm.ooProfit]), [[2, '20.00'], [1, '8.00']]);
 });

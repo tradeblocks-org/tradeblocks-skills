@@ -22,7 +22,7 @@ Call OO `get_optimization_results` with the completed `optimizationId`, ranking 
 
 ### 2. Run OO scratch candidates, never save
 
-Read the base via OO `get_saved_backtest` and carry its complete `parameters` into each OO `run_backtest` call, changing **only** the selected swept coordinates in memory. Preserve all other settings, including leg identities and date range. Never call any OO `save_*`, `replace_*` or `edit_*` tool. Record each returned `runId`; do not treat `run_backtest` acceptance as completion. Poll `get_backtest_status` by runId, observing `pollAfterMs` and the status note until complete. Wait between polls in the foreground (for example a foreground `sleep`), never as a background task: the workflow must still be running when the run completes. Stop and report failed or cancelled runs; do not fabricate results or retry as though the run had succeeded.
+Read the base via OO `get_saved_backtest` and carry its complete `parameters` into each OO `run_backtest` call, changing **only** the selected swept coordinates in memory. Preserve all other settings, including leg identities and date range (OO accepts a `rangeEnd` only up to the last completed trading day, never today, and swept values must stay inside OO's stated bounds, for example a leg `delta` above 0 and at most 100 and `quantity` at least 1). Never call any OO `save_*`, `replace_*` or `edit_*` tool. Record each returned `runId`; do not treat `run_backtest` acceptance as completion. Poll `get_backtest_status` by runId, observing `pollAfterMs` and the status note until complete. Wait between polls in the foreground (for example a foreground `sleep`), never as a background task: the workflow must still be running when the run completes. Stop and report failed or cancelled runs; do not fabricate results or retry as though the run had succeeded.
 
 ### 3. Capture and verify each run separately
 
@@ -34,7 +34,7 @@ node "${CLAUDE_SKILL_DIR}/../../scripts/oo-capture.mjs" stop "${CLAUDE_SESSION_I
 node "${CLAUDE_SKILL_DIR}/../../scripts/oo-capture.mjs" verify <capture-id>
 ```
 
-Arm a separate capture per run, call OO `get_backtest_results` **by that runId** for the identity-bound headline, then unfiltered contiguous `get_trade_log` pages **by the same runId**, stop, and `verify` before arming the next. Keep both returned capture IDs and verification summaries. Do not use a saved-backtest headline in a scratch-run capture. If either verification refuses, stop; no comparison import. The separate run's verified OO count, net P/L, ignored rows and open-at-end count remain its own provenance.
+Arm a separate capture per run, call OO `get_backtest_results` **by that runId** for the identity-bound headline, then unfiltered contiguous `get_trade_log` pages **by the same runId** (OO returns each page as a `tradeColumns` header plus `trades` rows, which the capture reads by column name; the hook reports each page's offset, row count and `nextOffset`), stop, and `verify` before arming the next. Keep both returned capture IDs and verification summaries. Do not use a saved-backtest headline in a scratch-run capture. If either verification refuses, stop; no comparison import. The separate run's verified OO count, net P/L, ignored rows and open-at-end count remain its own provenance.
 
 ### 4. Compose and import one trade-only block
 
