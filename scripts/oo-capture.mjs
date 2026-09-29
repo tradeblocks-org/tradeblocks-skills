@@ -95,7 +95,7 @@ export async function hook(input) {
 function isJson(text) { try { JSON.parse(text); return true; } catch { return false; } }
 export async function stop(session) {
   const armed = await marker(session);
-  if (!armed) fail('NOT_ARMED', 'capture has not started');
+  if (!armed) fail('NOT_ARMED', 'no capture is armed for this Claude session ID (stop takes the session ID given to start, not a capture ID)');
   const dir = capturePath(armed.id);
   const file = path.join(dir, 'manifest.json');
   // Record the stop before disarming: an interrupted stop leaves the marker, so a retry finishes it.
