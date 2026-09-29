@@ -63,7 +63,7 @@ test('verified OO economic log excludes ignored profits, keeps net fees, decimal
   assert.equal((await fs.readFile(result.dailyLogPath, 'utf8')).split('\n').length, 4);
   const csv = await fs.readFile(result.csvPath, 'utf8');
   assert.match(csv, /,200\.00,/);
-  assert.match(csv, /,19\.00,net_includes_fees,2,/);
+  assert.match(csv, /,19\.00,net_includes_fees,,2,/);
   assert.match(csv, /,1\.25,1\.25\n/);
   assert.equal(csv.split('\n').length, 3);
   assert.equal((await list()).find((entry) => entry.id === id).verified, true);
@@ -296,7 +296,7 @@ test('OO null fees mean no fee charged, preserve reported net profit', async () 
   const { id } = await capture({ rows: [trade(19, { openingFees: null, closingFees: null })] });
   const result = await verify(id);
   const csv = await fs.readFile(result.csvPath, 'utf8');
-  assert.match(csv, /,19\.00,net_includes_fees,2,/);
+  assert.match(csv, /,19\.00,net_includes_fees,,2,/);
   assert.match(csv, /,0\.00,0\.00\n/);
 });
 test('omitted OO fee field means no fee charged, as OO omits null properties', async () => {
@@ -306,11 +306,36 @@ test('omitted OO fee field means no fee charged, as OO omits null properties', a
   delete item.closingFees;
   const { id } = await capture({ rows: [item] });
   const csv = await fs.readFile((await verify(id)).csvPath, 'utf8');
-  assert.match(csv, /,19\.00,net_includes_fees,2,/);
+  assert.match(csv, /,19\.00,net_includes_fees,,2,/);
   assert.match(csv, /,1\.25,0\.00\n/);
 });
 refusal('non-numeric OO fee', { rows: [trade(19, { closingFees: '1.25' })] }, 'UNKNOWN_FEES');
 refusal('filter key present but null', { pageMutator: (args) => { args.outcome = null; } }, 'FILTERED_LOG');
+function plPct(csv) {
+  const [header, ...lines] = csv.trim().split('\n').map((line) => line.split(','));
+  assert.equal(header[header.indexOf('P/L Basis') + 1], 'P/L %');
+  return lines.map((cells) => cells[header.indexOf('P/L %')]);
+}
+test('OO profitPercentage is written verbatim as P/L %, including zero, with net economics unchanged', async () => {
+  const { id } = await capture({ rows: [trade(19, { profitPercentage: 4.75 }), trade(0, { profitPercentage: 0 }), trade(900, { isIgnored: true, profitPercentage: 99 })], headline: { numberOfTrades: 2 } });
+  const result = await verify(id);
+  assert.deepEqual([result.trades, result.ooProfit], [2, '19.00']);
+  assert.deepEqual(plPct(await fs.readFile(result.csvPath, 'utf8')), ['4.75', '0']);
+});
+test('omitted OO profitPercentage leaves P/L % blank for TradeBlocks to compute', async () => {
+  const { id } = await capture({ rows: [trade(19, { profitPercentage: -1.55 }), trade(0)], headline: { numberOfTrades: 2 } });
+  assert.deepEqual(plPct(await fs.readFile((await verify(id)).csvPath, 'utf8')), ['-1.55', '']);
+});
+refusal('non-numeric OO profitPercentage', { rows: [trade(19, { profitPercentage: 'NaN' })] }, 'INVALID_ECONOMICS');
+test('OO profitPercentage that overflows to Infinity is refused before any CSV is written', async () => {
+  const { id, session } = await capture({ pages: [], stopCapture: false });
+  const page = { offset: 0, items: [trade(19, { profitPercentage: 0 })], totalCount: 1, sortedBy: 'opened', direction: 'asc', nextOffset: null };
+  const call = event(session, 'get_trade_log', { savedBacktestId: 'backtest-1', ...sortFixture(), offset: 0 }, page);
+  await hook({ ...call, tool_response: call.tool_response.replace('"profitPercentage":0', '"profitPercentage":1e999') });
+  await stop(session);
+  await assert.rejects(verify(id), /^Error: INVALID_ECONOMICS: profitPercentage/);
+  await assert.rejects(fs.access(path.join(home, 'tradeblocks', 'oo-captures', id, 'tradelog.csv')));
+});
 test('expired saved file is a recorded named failure, not publication', async () => {
   const session = `session_${serial++}`;
   const { id } = await start(session);
