@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **`option-archive-import` (new).** Loads 1-minute option quotes from a local Parquet day-file archive into TradeBlocks with the server's `import_option_archive` tool (TradeBlocks 4.6+): agrees the selection (ticker root, existing days), runs a dry run, imports until nothing remains and checks the result. `scripts/thetadata_dump.py` builds such an archive from ThetaData (0DTE or full chain, resumable).
+
 ## 4.0.0
 
 Released with [TradeBlocks 4.0.0](https://github.com/tradeblocks-org/tradeblocks/blob/master/releases/v4.0.0.md) and Option Omega's MCP server. The plugin version now follows TradeBlocks' major version. Existing installs pinned to 1.0.0 update to this release.

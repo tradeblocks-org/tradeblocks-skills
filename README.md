@@ -21,6 +21,7 @@ Guided workflows that chain TradeBlocks MCP tools together for common analysis t
 | `market-data` | Market data setup — fetch daily and intraday bars, VIX context, and option quotes, or import minute bars from CSV or DuckDB |
 | `oo-capture` | Capture a saved OO backtest, saved portfolio or run as one verified TradeBlocks block with its marked daily curve (whole-book for a portfolio) |
 | `is-this-optimum-real` | Test an OO optimizer winner against a stable-region centre using separately verified scratch runs and a paired TradeBlocks comparison |
+| `option-archive-import` | Load 1-minute option quotes from a local Parquet day-file archive (e.g. a ThetaData dump) into TradeBlocks with `import_option_archive`, with dry run, resume and row checks; includes a ThetaData archive builder |
 
 ## Install
 

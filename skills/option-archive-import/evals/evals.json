@@ -1,0 +1,31 @@
+[
+  {
+    "skills": ["option-archive-import"],
+    "query": "Load SPXW 0DTE quotes for 2025 from my archive at /data/archive into TradeBlocks so I can replay my OO SPX trades.",
+    "expected_behavior": [
+      "Checks that import_option_archive is in the tool list",
+      "Proposes tickerRoot SPX because trade-log replay builds SPX tickers, and says so",
+      "Runs a dry run first and reports the estimate, skipped, missing and non-trading days",
+      "Imports with onExisting skip and calls again while days.remaining is not empty",
+      "Confirms empty mismatched/errors, checks coverage with run_sql and replays one trade"
+    ]
+  },
+  {
+    "skills": ["option-archive-import"],
+    "query": "I already imported 0DTE for March 2025; now add 0-7 DTE with a 5% strike band for the same days.",
+    "expected_behavior": [
+      "Explains that the days already hold data and skip would leave them unchanged",
+      "Asks before using onExisting replace and lists the days it will rewrite",
+      "Imports dteMin 0, dteMax 7 so the 0DTE data stays included"
+    ]
+  },
+  {
+    "skills": ["option-archive-import"],
+    "query": "My ThetaData subscription ends next month. How do I keep the option data?",
+    "expected_behavior": [
+      "Points to scripts/thetadata_dump.py to build a local archive (0dte or chain mode)",
+      "Warns that ThetaData allows one session per account while it runs",
+      "Explains that import_option_archive can later load any slice of the archive without the provider"
+    ]
+  }
+]
