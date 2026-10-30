@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **`vrp-daily` (new).** Computes the daily volatility risk premium of 0DTE options from option quotes in TradeBlocks (or an OO straddle block): ATM straddle IV, RV and VRP; model-free downside, upside and total VRP (also in variance form); BKM moment premia; leg VRP; range RV and log form. Single mode at a chosen entry time, or multi mode over 26 entries per day with tau or equal weighting. The agent states the setup and asks the user to confirm before computing; it ranks no variant. Preflight checks every input; the result is imported with `import_daily_dataset` with lookahead-safe timing. Python script with unit tests.
+
 ## 4.0.0
 
 Released with [TradeBlocks 4.0.0](https://github.com/tradeblocks-org/tradeblocks/blob/master/releases/v4.0.0.md) and Option Omega's MCP server. The plugin version now follows TradeBlocks' major version. Existing installs pinned to 1.0.0 update to this release.
