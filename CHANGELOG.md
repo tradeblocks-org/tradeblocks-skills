@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **`is-this-filter-real` (new).** Tests whether an entry or skip filter on one field is a robust edge, a risk reducer or an in-sample fit. Builds on TradeBlocks 4.5: `find_predictive_fields` `method` (Spearman/Kendall), `filter_curve` `unit: "day"` for multi-entry blocks, risk objectives (`maxDrawdown`, `mar`, `sharpe`), `groupBy`/`bins` regime groups, `bestThreshold`, `perYear` and the selection-adjusted calendar-month block permutation with Holm across the fields of one request. The purpose (edge or risk reduction) is fixed first and decides the objective; `bestThreshold` is never adopted as the candidate. With TradeBlocks 4.6 the skill passes `minKeptFraction`, retries over-budget permutations with `maxIterationsThatFit`, and reports a permutation that cannot reject (`permutation_cannot_reject`, smallest Holm value `k / (iterations + 1)` ≥ 0.05) as not run at sufficient power, naming the configurable work limits. Adds the plateau rule on the threshold sweep, a `suggest_filters` cross-check, single-day dependence and a chronological out-of-sample split, and an evidence-limited PASS/WARN/FAIL verdict. Charts are described as views; clients that can draw charts draw them, others can run the optional `scripts/render_charts.py` (Python, matplotlib) or show tables.
+- **Shared reference `optimize/references/plateau-and-verdict.md`.** The plateau rule and evidence-limited verdict language, now linked by both `is-this-optimum-real` and `is-this-filter-real`.
+
 ## 4.0.0
 
 Released with [TradeBlocks 4.0.0](https://github.com/tradeblocks-org/tradeblocks/blob/master/releases/v4.0.0.md) and Option Omega's MCP server. The plugin version now follows TradeBlocks' major version. Existing installs pinned to 1.0.0 update to this release.
