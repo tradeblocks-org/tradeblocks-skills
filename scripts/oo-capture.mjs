@@ -113,7 +113,8 @@ export async function stop(session) {
 }
 function money(value, name) { if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value * 100 - Math.round(value * 100)) > 1e-6) fail('INVALID_ECONOMICS', `${name} must be a finite cent amount`); return Math.round(value * 100); }
 function csv(value) { const text = String(value ?? ''); return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text; }
-const columns = ['Date Opened', 'Time Opened', 'Opening Price', 'Legs', 'Premium', 'Closing Price', 'Date Closed', 'Time Closed', 'Avg. Closing Cost', 'Reason For Close', 'P/L', 'P/L Basis', 'P/L %', 'No. of Contracts', 'Funds at Close', 'Margin Req.', 'Strategy', 'Opening Commissions + Fees', 'Closing Commissions + Fees'];
+// TradeBlocks reads a trade's ticker from the Underlying column and assumes SPX without one, so every row carries OO's underlying.
+const columns = ['Date Opened', 'Time Opened', 'Opening Price', 'Legs', 'Premium', 'Closing Price', 'Date Closed', 'Time Closed', 'Avg. Closing Cost', 'Reason For Close', 'P/L', 'P/L Basis', 'P/L %', 'No. of Contracts', 'Funds at Close', 'Margin Req.', 'Strategy', 'Opening Commissions + Fees', 'Closing Commissions + Fees', 'Underlying'];
 function dollars(value, name) { return (money(value, name) / 100).toFixed(2); }
 // TradeBlocks builds a local Date from Y-M-D, which rolls an impossible day (2026-02-30) into the next month, so refuse it here.
 function calendarDate(text) {
@@ -126,12 +127,13 @@ const legPattern = /^\d+ [A-Za-z]{3} \d{1,2} \d+(?:\.\d+)? [CP] (?:STO|BTO|STC|B
 function row(trade, strategy) {
   if (!calendarDate(trade.dateOpened) || !calendarDate(trade.dateClosed)) fail('INVALID_TRADE', 'economic trade needs valid open and close dates');
   if (!Number.isInteger(trade.numberOfContracts) || trade.numberOfContracts < 1) fail('INVALID_TRADE', 'numberOfContracts must be positive integer');
+  if (typeof trade.underlying !== 'string' || !/[A-Za-z]/.test(trade.underlying)) fail('INVALID_TRADE', 'underlying must be a ticker symbol, or TradeBlocks would assume SPX');
   if (typeof trade.legs !== 'string' || !trade.legs.split(' | ').every((leg) => legPattern.test(leg))) fail('INVALID_LEGS', 'legs must be OO trade-log leg text: "<contracts> <Mon> <day> <strike> <P|C> <STO|BTO> <price>" joined by " | "');
   // The fee columns are present only when the backtest charged fees (and a cell may be null): an absent or null fee is none charged.
   if ([trade.openingFees, trade.closingFees].some((fee) => fee != null && (typeof fee !== 'number' || !Number.isFinite(fee)))) fail('UNKNOWN_FEES', 'OO fee cells must be numbers or null (no fee charged)');
   // OO's own P/L % (percent units, on net P/L) is written verbatim and blank when OO's cell is null (no premium to measure against).
   if (trade.profitPercentage != null && (typeof trade.profitPercentage !== 'number' || !Number.isFinite(trade.profitPercentage))) fail('INVALID_ECONOMICS', 'profitPercentage must be a finite number or null');
-  const fields = [trade.dateOpened, trade.timeOpened, trade.openingUnderlyingPrice, trade.legs, dollars(trade.premiumPerContract, 'premiumPerContract'), trade.closingUnderlyingPrice, trade.dateClosed, trade.timeClosed, dollars(trade.averageClosingCostPerContract, 'averageClosingCostPerContract'), trade.reasonClosed, dollars(trade.profit, 'profit'), 'net_includes_fees', trade.profitPercentage, trade.numberOfContracts, trade.fundsAtClose, trade.buyingPowerRequired, strategy, dollars(trade.openingFees ?? 0, 'openingFees'), dollars(trade.closingFees ?? 0, 'closingFees')];
+  const fields = [trade.dateOpened, trade.timeOpened, trade.openingUnderlyingPrice, trade.legs, dollars(trade.premiumPerContract, 'premiumPerContract'), trade.closingUnderlyingPrice, trade.dateClosed, trade.timeClosed, dollars(trade.averageClosingCostPerContract, 'averageClosingCostPerContract'), trade.reasonClosed, dollars(trade.profit, 'profit'), 'net_includes_fees', trade.profitPercentage, trade.numberOfContracts, trade.fundsAtClose, trade.buyingPowerRequired, strategy, dollars(trade.openingFees ?? 0, 'openingFees'), dollars(trade.closingFees ?? 0, 'closingFees'), trade.underlying.trim()];
   return fields.map(csv).join(',');
 }
 // get_trade_log rows are arrays named by the response's own tradeColumns header; nothing here depends on column position.

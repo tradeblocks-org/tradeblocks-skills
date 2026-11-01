@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`oo-capture` keeps each trade's underlying.** `tradelog.csv` (from `verify` and `combine`) now ends with an `Underlying` column holding OO's per-trade `underlying`. TradeBlocks reads a trade's ticker from that column; without it, TradeBlocks assumed SPX, so a TSLA or GLD capture was joined against SPX market data (VIX, regime, enrichment). A trade whose OO `underlying` is missing or blank now refuses with `INVALID_TRADE`. Captures made with 4.0.0 keep their raw OO responses: run `verify` again (with the same `--strategy`, if one was chosen) to regenerate `tradelog.csv`, then import it as a new block and delete the old one. A capture already deleted must be captured again.
+
 ## 4.0.0
 
 Released with [TradeBlocks 4.0.0](https://github.com/tradeblocks-org/tradeblocks/blob/master/releases/v4.0.0.md) and Option Omega's MCP server. The plugin version now follows TradeBlocks' major version. Existing installs pinned to 1.0.0 update to this release.
