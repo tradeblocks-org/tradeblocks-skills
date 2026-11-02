@@ -1,10 +1,32 @@
 # Changelog
 
-## Unreleased
+## 4.0.1
+
+Released with [TradeBlocks 4.6.1](https://github.com/tradeblocks-org/tradeblocks/blob/master/releases/v4.6.1.md). Thanks to Amy in the Discord for the report and the TSLA repro.
 
 ### Fixed
 
-- **`oo-capture` keeps each trade's underlying.** `tradelog.csv` (from `verify` and `combine`) now ends with an `Underlying` column holding OO's per-trade `underlying`. TradeBlocks reads a trade's ticker from that column; without it, TradeBlocks assumed SPX, so a TSLA or GLD capture was joined against SPX market data (VIX, regime, enrichment). A trade whose OO `underlying` is missing or blank now refuses with `INVALID_TRADE`. Captures made with 4.0.0 keep their raw OO responses: run `verify` again (with the same `--strategy`, if one was chosen) to regenerate `tradelog.csv`, then import it as a new block and delete the old one. A capture already deleted must be captured again.
+- **`oo-capture` keeps each trade's underlying.** In 4.0.0, `oo-capture` read OO's per-trade `underlying` but never wrote it to `tradelog.csv`. TradeBlocks reads a trade's ticker from an `Underlying` column. Without one, it assumed SPX and said nothing, so a captured TSLA or GLD backtest or portfolio was imported as SPX. P/L, trade counts and strategies were right, but everything joined to market data was matched against SPX: VIX, regime, enrichment, and the market fields used in filter analysis.
+
+  `tradelog.csv` (from `verify` and `combine`) now ends with an `Underlying` column holding OO's per-trade `underlying`. A trade whose OO `underlying` is missing or blank is refused with `INVALID_TRADE`.
+
+### Who is affected
+
+Anyone who imported a 4.0.0 capture of a non-SPX backtest or portfolio. SPX captures were matched to the correct market data and need no repair.
+
+### Repairing an existing capture
+
+Updating the plugin or TradeBlocks does not fix a block that was already imported. Repair each affected capture:
+
+1. Update this plugin to 4.0.1, and TradeBlocks to 4.6.1 or later.
+2. Run `verify` again on the saved capture, with the same `--strategy` if you chose one. A 4.0.0 capture keeps OO's raw responses, so this rebuilds `tradelog.csv` with the `Underlying` column.
+3. Import the new `tradelog.csv` as a new block, then delete the old one.
+
+If the capture was deleted, capture the backtest or portfolio again.
+
+### TradeBlocks server compatibility
+
+TradeBlocks 4.0.0 and later already read the `Underlying` column. Use 4.6.1 or later: when a trade has no ticker, its market-joined tools warn that they assumed SPX, which flags any old block you have not repaired yet.
 
 ## 4.0.0
 
