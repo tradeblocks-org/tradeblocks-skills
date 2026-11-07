@@ -87,6 +87,10 @@ Option Omega CSV --> import_csv --> DuckDB --> Tools --> Skills --> Analysis
                               via fetch_bars / fetch_quotes / import_market_csv
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to write a skill that fits this repository.
+
 ## Links
 
 - [TradeBlocks](https://github.com/tradeblocks-org/tradeblocks) — Main application
