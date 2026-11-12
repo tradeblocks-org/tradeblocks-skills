@@ -69,10 +69,9 @@ test('verified OO economic log excludes ignored profits, keeps net fees, decimal
   assert.equal(result.dailyLogPath, path.join(home, 'tradeblocks', 'oo-captures', id, 'dailylog.csv'));
   assert.equal((await fs.readFile(result.dailyLogPath, 'utf8')).split('\n').length, 4);
   const csv = await fs.readFile(result.csvPath, 'utf8');
-  assert.match(csv, /,200\.00,/);
-  assert.match(csv, /,19\.00,net_includes_fees,,2,/);
-  assert.match(csv, /,1\.25,1\.25,SPX\n/);
-  assert.equal(csv.split('\n').length, 3);
+  const [header, ...rows] = parseCsv(csv);
+  assert.deepEqual(rows.map((cells) => ['Premium', 'P/L', 'P/L Basis', 'P/L %', 'No. of Contracts', 'Opening Commissions + Fees', 'Closing Commissions + Fees', 'Underlying'].map((key) => cells[header.indexOf(key)])),
+    [['200.00', '19.00', 'net_includes_fees', '', '2', '1.25', '1.25', 'SPX']]);
   assert.equal((await list()).find((entry) => entry.id === id).verified, true);
   await remove(id);
   assert.equal((await list()).some((entry) => entry.id === id), false);
@@ -299,22 +298,16 @@ test('hook message supplies page facts without opening saved result', async () =
   assert.match(JSON.parse(completed.stdout).hookSpecificOutput.additionalContext, /Page savedBacktestId=backtest-1, sort=opened asc, offset=100, trades=1, totalCount=101, nextOffset=terminal\./);
   await stop(session);
 });
-test('OO null fees mean no fee charged, preserve reported net profit', async () => {
-  const { id } = await capture({ rows: [trade(19, { openingFees: null, closingFees: null })] });
-  const result = await verify(id);
-  const csv = await fs.readFile(result.csvPath, 'utf8');
-  assert.match(csv, /,19\.00,net_includes_fees,,2,/);
-  assert.match(csv, /,0\.00,0\.00,SPX\n/);
-});
-test('OO fee columns absent (no fees charged) mean none charged', async () => {
-  const item = trade(19);
-  delete item.openingFees;
-  delete item.closingFees;
-  const { id } = await capture({ rows: [item] });
-  const csv = await fs.readFile((await verify(id)).csvPath, 'utf8');
-  assert.match(csv, /,19\.00,net_includes_fees,,2,/);
-  assert.match(csv, /,0\.00,0\.00,SPX\n/);
-});
+for (const missing of ['null', 'absent']) {
+  test(`OO ${missing} fees mean no fee charged, preserving reported net profit`, async () => {
+    const item = trade(19, { openingFees: null, closingFees: null });
+    if (missing === 'absent') { delete item.openingFees; delete item.closingFees; }
+    const { id } = await capture({ rows: [item] });
+    const [header, ...rows] = parseCsv(await fs.readFile((await verify(id)).csvPath, 'utf8'));
+    assert.deepEqual(rows.map((cells) => ['P/L', 'P/L Basis', 'Opening Commissions + Fees', 'Closing Commissions + Fees'].map((key) => cells[header.indexOf(key)])),
+      [['19.00', 'net_includes_fees', '0.00', '0.00']]);
+  });
+}
 refusal('non-numeric OO fee', { rows: [trade(19, { closingFees: '1.25' })] }, 'UNKNOWN_FEES');
 refusal('filter key present but null', { pageMutator: (args) => { args.outcome = null; } }, 'FILTERED_LOG');
 function plPct(csv) {

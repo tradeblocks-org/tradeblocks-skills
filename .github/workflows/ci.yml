@@ -52,5 +52,8 @@ jobs:
       - name: Check relative links
         run: node .github/scripts/check-links.mjs
 
+      - name: Install test dependencies
+        run: npm ci
+
       - name: Run test suite
         run: npm run --if-present test

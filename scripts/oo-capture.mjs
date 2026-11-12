@@ -113,8 +113,15 @@ export async function stop(session) {
 }
 function money(value, name) { if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value * 100 - Math.round(value * 100)) > 1e-6) fail('INVALID_ECONOMICS', `${name} must be a finite cent amount`); return Math.round(value * 100); }
 function csv(value) { const text = String(value ?? ''); return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text; }
+// Verified against the real OO export in tests/fixtures/oo-orb-export.csv:
+// VIX levels, underlying-point Gap/Movement, percentage-point Max Profit/Loss.
+const optionalCsvColumns = [
+  ['Opening VIX', 'openingVix'], ['Closing VIX', 'closingVix'],
+  ['Gap', 'gap'], ['Movement', 'intradayMovement'],
+  ['Max Profit', 'highestProfitPercentage'], ['Max Loss', 'highestLossPercentage'],
+];
 // TradeBlocks reads a trade's ticker from the Underlying column and assumes SPX without one, so every row carries OO's underlying.
-const columns = ['Date Opened', 'Time Opened', 'Opening Price', 'Legs', 'Premium', 'Closing Price', 'Date Closed', 'Time Closed', 'Avg. Closing Cost', 'Reason For Close', 'P/L', 'P/L Basis', 'P/L %', 'No. of Contracts', 'Funds at Close', 'Margin Req.', 'Strategy', 'Opening Commissions + Fees', 'Closing Commissions + Fees', 'Underlying'];
+const columns = ['Date Opened', 'Time Opened', 'Opening Price', 'Legs', 'Premium', 'Closing Price', 'Date Closed', 'Time Closed', 'Avg. Closing Cost', 'Reason For Close', 'P/L', 'P/L Basis', 'P/L %', 'No. of Contracts', 'Funds at Close', 'Margin Req.', 'Strategy', 'Opening Commissions + Fees', 'Closing Commissions + Fees', 'Underlying', ...optionalCsvColumns.map(([header]) => header)];
 function dollars(value, name) { return (money(value, name) / 100).toFixed(2); }
 // TradeBlocks builds a local Date from Y-M-D, which rolls an impossible day (2026-02-30) into the next month, so refuse it here.
 function calendarDate(text) {
@@ -134,6 +141,12 @@ function row(trade, strategy) {
   // OO's own P/L % (percent units, on net P/L) is written verbatim and blank when OO's cell is null (no premium to measure against).
   if (trade.profitPercentage != null && (typeof trade.profitPercentage !== 'number' || !Number.isFinite(trade.profitPercentage))) fail('INVALID_ECONOMICS', 'profitPercentage must be a finite number or null');
   const fields = [trade.dateOpened, trade.timeOpened, trade.openingUnderlyingPrice, trade.legs, dollars(trade.premiumPerContract, 'premiumPerContract'), trade.closingUnderlyingPrice, trade.dateClosed, trade.timeClosed, dollars(trade.averageClosingCostPerContract, 'averageClosingCostPerContract'), trade.reasonClosed, dollars(trade.profit, 'profit'), 'net_includes_fees', trade.profitPercentage, trade.numberOfContracts, trade.fundsAtClose, trade.buyingPowerRequired, strategy, dollars(trade.openingFees ?? 0, 'openingFees'), dollars(trade.closingFees ?? 0, 'closingFees'), trade.underlying.trim()];
+  for (const [, key] of optionalCsvColumns) {
+    const value = trade[key];
+    if (value != null && (typeof value !== 'number' || !Number.isFinite(value))) fail('INVALID_TRADE', `${key} must be a finite number or null`);
+    // The loader treats empty optional cells as absent; retain zero and all OO precision.
+    fields.push(value);
+  }
   return fields.map(csv).join(',');
 }
 // get_trade_log rows are arrays named by the response's own tradeColumns header; nothing here depends on column position.
