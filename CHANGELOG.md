@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.0.2
+
+### Fixed
+
+- **`oo-capture` retains OO's optional trade-log values.** Both `verify` and `combine` now write Opening VIX, Closing VIX, Gap, Movement, Max Profit and Max Loss. Values keep OO export units: VIX levels, underlying-price points for Gap/Movement, and percentage points for Max Profit/Loss (not dollars or fractional returns). Zero and negative values are preserved without rounding. Missing fields and null cells are empty, which TradeBlocks loads as absent; invalid non-numeric values refuse publication with `INVALID_TRADE`.
+- Headers and units are checked against a public real OO CSV export, with a round-trip through TradeBlocks 4.6.1's actual block-loader. The pinned server package is a development-only test dependency; the plugin still requires a separately installed server and never calls OO from TradeBlocks.
+
+### Updating and repairing existing blocks
+
+Update with `/plugin marketplace update tradeblocks-skills`, then `/plugin update tradeblocks@tradeblocks-skills`. Restart Claude Code to load the new plugin.
+
+For a retained capture, rerun `verify` with the same `--strategy` if one was chosen, then import the rebuilt CSV as a new block. Rerun `combine` for a comparison. Updating alone does not repair previously imported blocks. If the raw capture is gone, capture again or import OO's own CSV export.
+
 ## 4.0.1
 
 Released with [TradeBlocks 4.6.1](https://github.com/tradeblocks-org/tradeblocks/blob/master/releases/v4.6.1.md). Thanks to Amy in the Discord for the report and the TSLA repro.
