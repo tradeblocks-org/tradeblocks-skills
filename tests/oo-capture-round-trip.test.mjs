@@ -97,3 +97,15 @@ for (const field of optionalNames) {
     await assert.rejects(fs.access(path.join(home, 'tradeblocks', 'oo-captures', id, 'tradelog.csv')));
   });
 }
+
+test('recorded OO MCP table retains the observed units through the real block-loader', async () => {
+  const { savedBacktest } = JSON.parse(await fs.readFile(new URL('./fixtures/oo-trade-log-tables.json', import.meta.url), 'utf8'));
+  const trades = savedBacktest.trades.map((cells) => Object.fromEntries(savedBacktest.tradeColumns.map((key, i) => [key, cells[i]])));
+  const summary = await verify(await capture(trades));
+  const actual = await loadCsv(await fs.readFile(summary.csvPath, 'utf8'), 'recorded-mcp');
+  assert.deepEqual(values(actual), [
+    [28.4, 29.61, 26.97, 12.79, 56.89, -3.49],
+    [27.89, 27.25, 5.87, 36.58, 44.32, -7.45],
+    [26.48, 25.58, 19.59, 24.49, 71.25, -12.9],
+  ]);
+});
