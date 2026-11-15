@@ -25,7 +25,8 @@
         "./skills/optimize",
         "./skills/market-data",
         "./skills/oo-capture",
-        "./skills/is-this-optimum-real"
+        "./skills/is-this-optimum-real",
+        "./skills/vrp-daily"
       ]
     }
   ]

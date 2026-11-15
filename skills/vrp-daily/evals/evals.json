@@ -1,0 +1,90 @@
+[
+  {
+    "skills": [
+      "vrp-daily"
+    ],
+    "query": "Compute the daily VRP at 09:45 for SPX since 2022-06 and make it available as a dataset.",
+    "expected_behavior": [
+      "Finds the existing 09:45 0DTE ATM straddle block and uses its tradelog.csv",
+      "Runs --check, fills missing minute bars with fetch_bars or reports them",
+      "Imports iv with open timing and knownBy 09:45, rv/vrp columns with close timing, and verifies with list_daily_datasets"
+    ]
+  },
+  {
+    "skills": [
+      "vrp-daily"
+    ],
+    "query": "I need the VRP for a 14:00 entry.",
+    "expected_behavior": [
+      "Finds no straddle block at 14:00",
+      "Explains that a new Option Omega backtest uses the user's allowance and asks for consent before running it",
+      "After consent, imports the backtest via oo-capture or CSV export and computes with --entry 14:00"
+    ]
+  },
+  {
+    "skills": [
+      "vrp-daily"
+    ],
+    "query": "Use today's VRP to decide whether to enter at 09:45.",
+    "expected_behavior": [
+      "Explains that rv and vrp are only known after the close",
+      "Offers iv (known at entry) or prior-day vrp instead",
+      "Does not present same-day vrp as usable at entry"
+    ]
+  },
+  {
+    "skills": [
+      "vrp-daily"
+    ],
+    "query": "Compute downside and upside VRP for SPX at 09:45 since 2022-06.",
+    "expected_behavior": [
+      "Confirms the entry time 09:45 and names the IV source (option quotes in TradeBlocks if present, else Option Omega straddle and strangle blocks)",
+      "Runs --check first and resolves gaps only by naming market-data or oo-capture, never fetching data itself",
+      "Imports iv, iv_down, iv_up, iv_mf with open timing and knownBy 09:45 and all rv_* and vrp_* with close timing, under a new dataset name",
+      "Says that vrp_down and vrp_up are vol-point differences and do not add up to vrp_mf"
+    ]
+  },
+  {
+    "skills": [
+      "vrp-daily"
+    ],
+    "query": "Do the same VRP at 09:32.",
+    "expected_behavior": [
+      "Runs the preflight, which exits with code 3 and reports that no strangle nodes exist at 09:32",
+      "Names oo-capture (or market-data fetch_quotes if quotes are offered) and states that new Option Omega backtests need the user's consent",
+      "Does not start a backtest or fetch data, and does not compute with --allow-gaps unless the user asks"
+    ]
+  },
+  {
+    "skills": [
+      "vrp-daily"
+    ],
+    "query": "Compute the VRP for SPX since 2024.",
+    "expected_behavior": [
+      "Before computing, fixes with the user which variant(s), which mode (single with entry time, or multi) and which weighting (tau or equal, if multi) to use",
+      "Explains options neutrally if asked and does not recommend or rank any variant, mode or weighting",
+      "States the setup it will compute with, including defaults for open choices (09:45 single, tau in multi), and waits for confirmation before computing"
+    ]
+  },
+  {
+    "skills": [
+      "vrp-daily"
+    ],
+    "query": "Give me the multi-entry daily VRP, both the variance form and the moment premia, equal weighted.",
+    "expected_behavior": [
+      "Runs --mode multi --weight equal with --sum-var and --moments, one weighting for all variants",
+      "States that a daily column needs at least 20 valid entries of 26 and reports days with fewer",
+      "Imports all columns with close timing under a new dataset name"
+    ]
+  },
+  {
+    "skills": [
+      "vrp-daily"
+    ],
+    "query": "Which VRP variant is the best one?",
+    "expected_behavior": [
+      "Does not name a best variant, mode or weighting",
+      "Describes what each option computes (formula, units, requirements) and asks what the user wants to use"
+    ]
+  }
+]
