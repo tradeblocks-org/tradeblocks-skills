@@ -1,0 +1,34 @@
+[
+  {
+    "skills": ["is-this-filter-real"],
+    "query": "Is skipping days with vrp.vrp_0945 below 2.2 a real filter for block straddle-0dte-0945-atm?",
+    "expected_behavior": [
+      "Checks timing: vrp.vrp_0945 is close-timed and applied from the prior day; passes maxMissedSessions",
+      "Sweeps both directions, states the plateau rule before choosing, flags the narrow region and the U-shape",
+      "Runs one permutation call with the compared vrp fields and reports pValue and pValueHolm for the best threshold",
+      "Shows that removing 2025-04-09 shrinks the improvement by more than half and flags single-day dependence",
+      "Concludes with an evidence-limited verdict that does not call the filter robust"
+    ]
+  },
+  {
+    "skills": ["is-this-filter-real"],
+    "query": "My 11-entry SPX iron condor: should I skip days when VIX z20 > 1.5? I mainly want a smaller drawdown.",
+    "expected_behavior": [
+      "Records the purpose as risk reduction and runs filter_curve with unit day, selecting and permuting with sharpe, checking with mar and the drawdown episode, and reporting the totalPl cost",
+      "Does not adopt the risk objective's bestThreshold when it keeps too few days; applies the plateau eligibility floor",
+      "On a flat drawdown region, breaks the tie by lowest P&L cost and states it; flags a permutation whose best threshold is not eligible as not testing the candidate",
+      "Checks that enough days are removed and names the drawdown episode the result depends on",
+      "Reports the permutation iterations actually run (work limit) and any named refusal as 'not run (<reason>)'",
+      "Does not call the filter an edge when it costs P&L"
+    ]
+  },
+  {
+    "skills": ["is-this-filter-real"],
+    "query": "Test a filter on today's VIX close for my 09:45 entry.",
+    "expected_behavior": [
+      "Notices that the same-day close is not known at 09:45 and refuses to use it same-day",
+      "Offers the prior-day close (close-timed field applied from the next day) instead",
+      "Does not run a sweep on the look-ahead field"
+    ]
+  }
+]

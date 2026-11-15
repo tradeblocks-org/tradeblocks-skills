@@ -2,3 +2,4 @@ node_modules/
 *.duckdb
 *.duckdb.wal
 .DS_Store
+__pycache__/
