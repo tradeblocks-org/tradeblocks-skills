@@ -19,11 +19,11 @@ skills/               8 skill directories, each with SKILL.md + references/
 
 ## Setup
 
-No build step — skills are static markdown. The TradeBlocks MCP server must be installed and running separately.
+No build step is required. Skills are Markdown workflows; OO capture also includes Node.js scripts and a plugin hook. The TradeBlocks MCP server must be installed and running separately. For development, run `npm ci` before `npm test`: the pinned server and CSV parser dev dependencies exercise the real block-loader round-trip without bundling a server into the plugin.
 
 ## CI
 
-`.github/workflows/ci.yml` runs the `validate` job on every pull request to `main` and every push to `main`; branch protection requires it, up to date with `main`. It validates the plugin and marketplace manifests (`claude plugin validate --strict .`), validates every skill `marketplace.json` lists against the Agent Skills specification (`agentskills validate` from `skills-ref`), fails on relative Markdown links to missing files (`.github/scripts/check-links.mjs`), and runs `npm test` when `package.json` declares it.
+`.github/workflows/ci.yml` runs the `validate` job on every pull request to `main` and every push to `main`; branch protection requires it, up to date with `main`. It validates the plugin and marketplace manifests (`claude plugin validate --strict .`), validates every skill `marketplace.json` lists against the Agent Skills specification (`agentskills validate` from `skills-ref`), fails on relative Markdown links to missing files (`.github/scripts/check-links.mjs`), installs locked test dependencies with `npm ci`, and runs `npm test` when `package.json` declares it.
 
 ## Skill Structure
 

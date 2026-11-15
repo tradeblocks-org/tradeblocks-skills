@@ -4,6 +4,47 @@
 
 - **`option-archive-import` (new).** Loads 1-minute option quotes from a local Parquet day-file archive into TradeBlocks with the server's `import_option_archive` tool (TradeBlocks 4.6+): agrees the selection (ticker root, existing days), runs a dry run, imports until nothing remains and checks the result. `scripts/thetadata_dump.py` builds such an archive from ThetaData (0DTE or full chain, resumable).
 
+## 4.0.2
+
+### Fixed
+
+- **`oo-capture` retains OO's optional trade-log values.** Both `verify` and `combine` now write Opening VIX, Closing VIX, Gap, Movement, Max Profit and Max Loss. Values keep OO export units: VIX levels, underlying-price points for Gap/Movement, and percentage points for Max Profit/Loss (not dollars or fractional returns). Zero and negative values are preserved without rounding. Missing fields and null cells are empty, which TradeBlocks loads as absent; invalid non-numeric values refuse publication with `INVALID_TRADE`.
+- Headers and units are checked against a public real OO CSV export, with a round-trip through TradeBlocks 4.6.1's actual block-loader. The pinned server package is a development-only test dependency; the plugin still requires a separately installed server and never calls OO from TradeBlocks.
+
+### Updating and repairing existing blocks
+
+Update with `/plugin marketplace update tradeblocks-skills`, then `/plugin update tradeblocks@tradeblocks-skills`. Restart Claude Code to load the new plugin.
+
+For a retained capture, rerun `verify` with the same `--strategy` if one was chosen, then import the rebuilt CSV as a new block. Rerun `combine` for a comparison. Updating alone does not repair previously imported blocks. If the raw capture is gone, capture again or import OO's own CSV export.
+
+## 4.0.1
+
+Released with [TradeBlocks 4.6.1](https://github.com/tradeblocks-org/tradeblocks/blob/master/releases/v4.6.1.md). Thanks to Amy in the Discord for the report and the TSLA repro.
+
+### Fixed
+
+- **`oo-capture` keeps each trade's underlying.** In 4.0.0, `oo-capture` read OO's per-trade `underlying` but never wrote it to `tradelog.csv`. TradeBlocks reads a trade's ticker from an `Underlying` column. Without one, it assumed SPX and said nothing, so a captured TSLA or GLD backtest or portfolio was imported as SPX. P/L, trade counts and strategies were right, but everything joined to market data was matched against SPX: VIX, regime, enrichment, and the market fields used in filter analysis.
+
+  `tradelog.csv` (from `verify` and `combine`) now ends with an `Underlying` column holding OO's per-trade `underlying`. A trade whose OO `underlying` is missing or blank is refused with `INVALID_TRADE`.
+
+### Who is affected
+
+Anyone who imported a 4.0.0 capture of a non-SPX backtest or portfolio. SPX captures were matched to the correct market data and need no repair.
+
+### Repairing an existing capture
+
+Updating the plugin or TradeBlocks does not fix a block that was already imported. Repair each affected capture:
+
+1. Update this plugin to 4.0.1, and TradeBlocks to 4.6.1 or later.
+2. Run `verify` again on the saved capture, with the same `--strategy` if you chose one. A 4.0.0 capture keeps OO's raw responses, so this rebuilds `tradelog.csv` with the `Underlying` column.
+3. Import the new `tradelog.csv` as a new block, then delete the old one.
+
+If the capture was deleted, capture the backtest or portfolio again.
+
+### TradeBlocks server compatibility
+
+TradeBlocks 4.0.0 and later already read the `Underlying` column. Use 4.6.1 or later: when a trade has no ticker, its market-joined tools warn that they assumed SPX, which flags any old block you have not repaired yet.
+
 ## 4.0.0
 
 Released with [TradeBlocks 4.0.0](https://github.com/tradeblocks-org/tradeblocks/blob/master/releases/v4.0.0.md) and Option Omega's MCP server. The plugin version now follows TradeBlocks' major version. Existing installs pinned to 1.0.0 update to this release.
