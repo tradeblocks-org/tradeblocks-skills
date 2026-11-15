@@ -69,10 +69,9 @@ test('verified OO economic log excludes ignored profits, keeps net fees, decimal
   assert.equal(result.dailyLogPath, path.join(home, 'tradeblocks', 'oo-captures', id, 'dailylog.csv'));
   assert.equal((await fs.readFile(result.dailyLogPath, 'utf8')).split('\n').length, 4);
   const csv = await fs.readFile(result.csvPath, 'utf8');
-  assert.match(csv, /,200\.00,/);
-  assert.match(csv, /,19\.00,net_includes_fees,,2,/);
-  assert.match(csv, /,1\.25,1\.25\n/);
-  assert.equal(csv.split('\n').length, 3);
+  const [header, ...rows] = parseCsv(csv);
+  assert.deepEqual(rows.map((cells) => ['Premium', 'P/L', 'P/L Basis', 'P/L %', 'No. of Contracts', 'Opening Commissions + Fees', 'Closing Commissions + Fees', 'Underlying'].map((key) => cells[header.indexOf(key)])),
+    [['200.00', '19.00', 'net_includes_fees', '', '2', '1.25', '1.25', 'SPX']]);
   assert.equal((await list()).find((entry) => entry.id === id).verified, true);
   await remove(id);
   assert.equal((await list()).some((entry) => entry.id === id), false);
@@ -299,22 +298,16 @@ test('hook message supplies page facts without opening saved result', async () =
   assert.match(JSON.parse(completed.stdout).hookSpecificOutput.additionalContext, /Page savedBacktestId=backtest-1, sort=opened asc, offset=100, trades=1, totalCount=101, nextOffset=terminal\./);
   await stop(session);
 });
-test('OO null fees mean no fee charged, preserve reported net profit', async () => {
-  const { id } = await capture({ rows: [trade(19, { openingFees: null, closingFees: null })] });
-  const result = await verify(id);
-  const csv = await fs.readFile(result.csvPath, 'utf8');
-  assert.match(csv, /,19\.00,net_includes_fees,,2,/);
-  assert.match(csv, /,0\.00,0\.00\n/);
-});
-test('OO fee columns absent (no fees charged) mean none charged', async () => {
-  const item = trade(19);
-  delete item.openingFees;
-  delete item.closingFees;
-  const { id } = await capture({ rows: [item] });
-  const csv = await fs.readFile((await verify(id)).csvPath, 'utf8');
-  assert.match(csv, /,19\.00,net_includes_fees,,2,/);
-  assert.match(csv, /,0\.00,0\.00\n/);
-});
+for (const missing of ['null', 'absent']) {
+  test(`OO ${missing} fees mean no fee charged, preserving reported net profit`, async () => {
+    const item = trade(19, { openingFees: null, closingFees: null });
+    if (missing === 'absent') { delete item.openingFees; delete item.closingFees; }
+    const { id } = await capture({ rows: [item] });
+    const [header, ...rows] = parseCsv(await fs.readFile((await verify(id)).csvPath, 'utf8'));
+    assert.deepEqual(rows.map((cells) => ['P/L', 'P/L Basis', 'Opening Commissions + Fees', 'Closing Commissions + Fees'].map((key) => cells[header.indexOf(key)])),
+      [['19.00', 'net_includes_fees', '0.00', '0.00']]);
+  });
+}
 refusal('non-numeric OO fee', { rows: [trade(19, { closingFees: '1.25' })] }, 'UNKNOWN_FEES');
 refusal('filter key present but null', { pageMutator: (args) => { args.outcome = null; } }, 'FILTERED_LOG');
 function plPct(csv) {
@@ -434,6 +427,13 @@ test('verify can be re-run and gives the same result', async () => {
 });
 refusal('impossible calendar date', { rows: [trade(19, { dateClosed: '2026-02-30' })] }, 'INVALID_TRADE');
 refusal('out-of-range month', { rows: [trade(19, { dateOpened: '2026-13-01' })] }, 'INVALID_TRADE');
+test('each trade keeps its own OO underlying in the Underlying column TradeBlocks reads as the ticker', async () => {
+  const { id } = await capture({ rows: [trade(12, { underlying: 'TSLA' }), trade(7, { underlying: 'GLD', dateOpened: '2026-01-05', dateClosed: '2026-01-05' })], headline: { numberOfTrades: 2, numberOfOpenTrades: 0 } });
+  const [header, ...rows] = parseCsv(await fs.readFile((await verify(id)).csvPath, 'utf8'));
+  assert.deepEqual(rows.map((cells) => [cells[header.indexOf('Underlying')], cells[header.indexOf('P/L')]]), [['TSLA', '12.00'], ['GLD', '7.00']]);
+});
+refusal('missing OO underlying', { rows: [trade(19, { underlying: null })] }, 'INVALID_TRADE');
+refusal('blank OO underlying', { rows: [trade(19, { underlying: ' ' })] }, 'INVALID_TRADE');
 test('pages from another OO server with a colliding id and matching totals refuse', async () => {
   const session = `session_${serial++}`;
   const { id } = await start(session);
@@ -557,6 +557,7 @@ test('combine publishes one trade-only CSV with each verified run reconciled by 
   const sums = Object.fromEntries(Object.entries(grouped).map(([label, trades]) =>
     [label, { count: trades.length, cents: trades.reduce((sum, fields) => sum + Math.round(Number(fields[pl]) * 100), 0) }]));
   assert.deepEqual(sums, { 'best, "fast"': { count: 2, cents: 1025 }, 'centre\nslow': { count: 1, cents: 450 } });
+  assert.deepEqual(new Set(rows.map((fields) => fields[header.indexOf('Underlying')])), new Set(['SPX']));
   t.diagnostic(`CLI fixture per-arm count/net cents: ${JSON.stringify(sums)}`);
   assert.deepEqual(result.arms.map(({ label, runId, trades, ooProfit }) => [label, runId, trades, ooProfit]),
     [['best, "fast"', 'run-best', 2, '10.25'], ['centre\nslow', 'run-centre', 1, '4.50']]);
