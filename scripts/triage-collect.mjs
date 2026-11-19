@@ -322,6 +322,7 @@ export function resultsFor(id, manifest, checks, tbVersion) {
     runs: manifest.runs,
     // Cost scenario names come from the local config, never from the manifest.
     costs: null,
+    costsSha256: null,
     variantsTried: manifest.variants_tried,
     authorUsesIntraMinuteStops: manifest.oo_settings.useIntraMinuteStop,
     authorCostsMatchBase: manifest.author_costs_match_base,

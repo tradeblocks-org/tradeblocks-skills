@@ -321,3 +321,57 @@ test("A1-A5: every counted check outcome equals the fixture's expected_checks", 
     assert.deepEqual(counted, m.expected_checks, id);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Review v2 (round 8)
+// ---------------------------------------------------------------------------
+
+test("v2 B1: without author_base off the base costs, C4-C8 are not run and the verdict is never reject", () => {
+  const r = passing({ authorCostsMatchBase: false });
+  r.checks.C4 = { metrics: { point: -50, ciLow: -90, ciHigh: -10 } };
+  r.checks.C7 = { metrics: { cost2xPl: -100, cost2xKeepShare: 0 } };
+  const report = evaluate(r, thresholds);
+  assert.equal(report.verdict, "unclear");
+  for (const id of ["C4", "C5", "C6", "C7", "C8"]) {
+    assert.equal(report.checks[id].status, "not_run", id);
+    assert.match(report.checks[id].reason, /author_base run missing/, id);
+  }
+  assert.equal(report.checks.C2.status, "run");
+  assert.equal(report.checks.C3.status, "run");
+});
+
+test("v2 fix 1: R9 guard also without ciHigh, and for a point below ciLow", () => {
+  const below = passing();
+  below.checks.C4 = { metrics: { point: 2, ciLow: 3, ciHigh: 9 } };
+  let report = evaluate(below, thresholds);
+  assert.equal(report.checks.C4.outcome, "cap");
+  assert.match(report.checks.C4.unreliable, /excludes its own point estimate/);
+
+  const noHigh = passing();
+  noHigh.checks.C4 = { metrics: { point: 5, ciLow: 3 } };
+  report = evaluate(noHigh, thresholds);
+  assert.equal(report.checks.C4.outcome, "cap");
+  assert.match(report.checks.C4.unreliable, /interval bound missing/);
+  assert.equal(report.verdict, "unclear");
+});
+
+test("v2 fix 2: run labels must be distinct across roles", () => {
+  for (const runs of [
+    { author: "a", naive: "n", cost_2x: "a" },
+    { author: "a", naive: "a", cost_2x: "c" },
+    { author: "a", author_base: "a", naive: "n", cost_2x: "c" },
+  ]) {
+    assert.throws(
+      () =>
+        evaluate(passing({ runs, authorCostsMatchBase: false }), thresholds),
+      /^Error: BAD_RESULTS: run labels must be distinct/,
+      JSON.stringify(runs),
+    );
+  }
+});
+
+test("v2 fix 4: the log line carries the cost scenarios' sha256", () => {
+  const sha = "a".repeat(64);
+  const report = evaluate(passing({ costsSha256: sha }), thresholds);
+  assert.equal(JSON.parse(logLine(report)).inputs.costsSha256, sha);
+});

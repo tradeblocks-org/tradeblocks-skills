@@ -62,11 +62,11 @@ TRIAGE_CONFIG=<local config> node "${CLAUDE_SKILL_DIR}/../../scripts/triage-run-
   --settings <author settings.json> --author-label "<author label>" --manifest <triage.json>
 ```
 
-It reads the base scenario through the local config and prints the runs still needed, each as exact field changes to the author run (at most four): `author_base` when the author's costs differ from the base scenario (it replaces the author in every check), `naive` and `cost_2x` at base costs, `minute_stop` when Option Omega honours the author's intra-minute stops. It also prints the flags `author_costs_match_base` and `author_uses_intra_minute_stops` for the manifest. Details: [references/run-request.md](references/run-request.md). You never run Option Omega yourself (R10); a plug-in or the user builds the runs and adds them to the block with the given labels.
+It reads the base scenario through the local config and prints the runs still needed, each as exact field changes to the author run (at most four): `author_base` when the author's costs differ from the base scenario (it replaces the author in every check), `naive` and `cost_2x` at base costs, `minute_stop` when Option Omega honours the author's intra-minute stops. It also prints the flags `author_costs_match_base` and `author_uses_intra_minute_stops` for the manifest and `costsSha256` (the exact cost values used) for the check results. Any `reviewByHand` field in the naive run is an author setting the script cannot switch off safely: check it by hand before building the run. Details: [references/run-request.md](references/run-request.md). You never run Option Omega yourself (R10); a plug-in or the user builds the runs and adds them to the block with the given labels.
 
 ### 4. Runs in the block
 
-Re-check the labels as in step 1. If the author uses entry filters, now read C3's missing-day part from the naive run (step 2); if that C3 rule triggers, stop with "unclear". A run still missing stays missing: its check is not run and the verdict is capped. With the author run alone the verdict is never "continue"; off the base costs without `author_base` it is at most "unclear".
+Re-check the labels as in step 1. If the author uses entry filters, now read C3's missing-day part from the naive run (step 2); if that C3 rule triggers, stop with "unclear". A run still missing stays missing: its check is not run and the verdict is capped. With the author run alone the verdict is never "continue". Off the base costs without `author_base`, C4–C8 are not run (they would compare runs at different costs) and the verdict is at most "unclear".
 
 ### 5. Gate C4 - better than the naive version?
 
@@ -85,7 +85,7 @@ Run every check even after one fails, so the log holds complete rows (N50).
 
 ### 7. Verdict
 
-Write `check-results.json` in the run folder (root from the local config): `case`, `runAt` (ISO time of this run), `source` (`{ref, description}` or null), `ruleSheet` (all 13 fields), `blockId`, `runs`, `costs` (the base and 2x scenario names from the local config; never from the manifest), `variantsTried` (from the manifest; logged only in V1), `authorUsesIntraMinuteStops` and `authorCostsMatchBase` (both required, from the run request), `checks` (`{ "C2": { "metrics": {...} }, ... }`; a check that could not run: `{ "notRun": "<reason>" }`; one metric that could not be read: `null` plus `"notRunReason"`), `versions` (`tradeblocks`, `optionomega` when known), `ooRunIds`, `runFolder`. Then:
+Write `check-results.json` in the run folder (root from the local config): `case`, `runAt` (ISO time of this run), `source` (`{ref, description}` or null), `ruleSheet` (all 13 fields), `blockId`, `runs` (one distinct label per role), `costs` (the base and 2x scenario names from the local config; never from the manifest), `costsSha256` (from the run request), `variantsTried` (from the manifest; logged only in V1), `authorUsesIntraMinuteStops` and `authorCostsMatchBase` (both required, from the run request), `checks` (`{ "C2": { "metrics": {...} }, ... }`; a check that could not run: `{ "notRun": "<reason>" }`; one metric that could not be read: `null` plus `"notRunReason"`), `versions` (`tradeblocks`, `optionomega` when known), `ooRunIds`, `runFolder`. Then:
 
 ```
 node "${CLAUDE_SKILL_DIR}/../../scripts/triage-verdict.mjs" \

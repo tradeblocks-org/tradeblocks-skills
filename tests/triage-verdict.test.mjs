@@ -380,6 +380,7 @@ test("log line carries the inputs; rule sheet is shown without a source too", ()
     blockId: "b1",
     runs: r.runs,
     costs: { slippage_per_side: 0.05 },
+    costsSha256: null,
   });
   const text = summary(report, thresholds);
   assert.match(

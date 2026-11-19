@@ -8,22 +8,28 @@ Every run starts as a copy of the **author run** and changes only the fields lis
 
 ## author_base (only when the author's costs differ from the base scenario)
 
-The author run with the five cost fields set to the base scenario. It replaces the author run in every check. Without it, a triage of a run off the base costs is at most unclear.
+The author run with the five cost fields set to the base scenario. It replaces the author run in every check. Without it, C4–C8 are not run (they would compare runs at different costs) and the verdict is at most unclear.
 
 ## naive (always; feeds C4 and C3's missing rule days)
 
-The author run minus every optional lever, at base costs, held to the structure's natural end:
+The author run minus every optional lever, at base costs, held to the structure's natural end. Built **fail closed**: only these settings stay as in the author run, everything else is switched off.
 
-| Field group | Change |
+| Stays | Fields |
+|---|---|
+| Structure, expiry, strike rule | `underlying`, `legs`, `strikeOffsetType`, `useExactDte`, `roundStrikesToNearest` |
+| Entry days and times | `entryTime`, `additionalEntryTimes`, `useFloatingEntryTime`, `minEntryTime`, `maxEntryTime`, `weeklyEntries`, `monthlyEntryDay`, `monthlyEntryOrdinal`, `specificEntryDays` |
+| Record | `rangeStart`, `rangeEnd`, `startingFunds`, `ignoreMarginRequirements` |
+| Exit groups | `id`, `name`, `legIds` |
+| Units | every `…Type` field (meaningless once its field is off) |
+
+| Set | Value |
 |---|---|
 | Costs | the base scenario |
-| Profit target | off: `maxProfit` null, `useProfitActions` false, `profitActions` empty |
-| Stops | off: `maxLoss` null, `isTrailingStopLoss` false, `useIntraMinuteStop` false |
-| Time and tested exits | off: `useTimeActions` false, `timeActions` empty, `exitAtDte` / `exitAtDit` / `exitAtMit` / `exitTime` null, `exitWhenPutTested` / `exitWhenCallTested` false |
-| Entry filters | off: every set `entryMin*` / `entryMax*` / VIX / SMA / EMA filter null, `useOpeningRangeBreakout` false |
-| Re-entry | off: `reentryConditions` empty |
-| Sizing rules | off: one fixed contract count per entry (`maxContractsPerTrade` = the author's, default 1), `capitalPerContract` null |
-| Exit | hold to the natural end: expiry of the short leg; for a calendar, the front leg's expiry |
+| Size | `maxContractsPerTrade` = the author's (default 1), `allocationPercentage` 0 (one constant contract count per entry) |
+| Every other top-level field | booleans false, numbers null, lists empty (filters, re-entry, `capProfits`/`capLosses`, `maxOpenTrades`, opening-range breakout, …) |
+| Every other exit-group field | off the same way (profit target, stops incl. per-leg stops and `legExitDeltas`, trailing, time, tested and move exits, intra-minute stops) → hold to expiry of the short leg; for a calendar, the front leg's expiry |
+
+A text field the script does not know cannot be switched off safely; it is kept and listed under `reviewByHand` — check it by hand before building the run.
 
 ## cost_2x (always; feeds C7)
 
@@ -39,6 +45,7 @@ The author's rules at base costs with `exitConditions[].useIntraMinuteStop` set 
 {
   "flags": { "author_costs_match_base": false, "author_uses_intra_minute_stops": true },
   "baseScenario": "<name>",
+  "costsSha256": "<sha256 of the base and 2x cost values used>",
   "runs": [
     { "role": "author_base", "label": "<author> base-costs", "from": "author", "set": { <cost fields> } },
     { "role": "naive", "label": "<author> naive", "from": "author",
@@ -51,4 +58,4 @@ The author's rules at base costs with `exitConditions[].useIntraMinuteStop` set 
 }
 ```
 
-`set` overwrites top-level settings fields; `exitConditions[i]` overwrites fields of the author's i-th exit group. Copy both flags into `triage.json` (`author_costs_match_base`, `oo_settings.useIntraMinuteStop`).
+`set` overwrites top-level settings fields; `exitConditions[i]` overwrites fields of the author's i-th exit group. Only fields that change are listed. Copy both flags into `triage.json` (`author_costs_match_base`, `oo_settings.useIntraMinuteStop`) and `costsSha256` into the check results.

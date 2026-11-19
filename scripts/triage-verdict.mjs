@@ -231,6 +231,16 @@ export function evaluate(
     }
   }
   validateRuleSheet(results.ruleSheet, thresholds.checks.C1.weights);
+  // One label per role: a run reused for two roles would compare it with itself.
+  const labels = Object.values(runs).filter(
+    (v) => v !== undefined && v !== null,
+  );
+  if (new Set(labels).size !== labels.length) {
+    fail(
+      "BAD_RESULTS",
+      `run labels must be distinct across roles: ${JSON.stringify(runs)}`,
+    );
+  }
 
   // R6: every check reads the run on the user's base costs. author_base replaces
   // the author run when the author's own costs differ from the base scenario.
@@ -250,7 +260,12 @@ export function evaluate(
     const def = thresholds.checks[id];
     const supplied = results.checks?.[id];
     let row;
-    if (id === "C1") {
+    // Off the base costs without author_base, every cost-dependent check would
+    // compare runs at different costs: not run (C2 and C3 do not depend on costs).
+    const costDependent = ["C4", "C5", "C6", "C7", "C8"].includes(id);
+    if (costDependent && costBasis.status !== "base") {
+      row = notRun("author_base run missing (author off base costs)");
+    } else if (id === "C1") {
       if (!hasDescription(results.source)) {
         row = {
           status: "skipped",
@@ -302,8 +317,11 @@ export function evaluate(
     // R9 guard: an interval that excludes its own point estimate is unreliable.
     if (id === "C4" && (row.status === "run" || row.status === "partial")) {
       const { point, ciLow, ciHigh } = row.metrics;
-      if (typeof ciHigh === "number" && (point < ciLow || point > ciHigh)) {
-        row.unreliable = "bootstrap interval excludes its own point estimate";
+      const bounds = [ciLow, ciHigh].every((b) => typeof b === "number");
+      if (!bounds || point < ciLow || point > ciHigh) {
+        row.unreliable = bounds
+          ? "bootstrap interval excludes its own point estimate"
+          : "bootstrap interval bound missing";
         if (SEVERITY[row.outcome] < SEVERITY.cap) row.outcome = "cap";
       }
     }
@@ -364,6 +382,7 @@ export function evaluate(
     runs,
     blockId: results.blockId ?? null,
     costs: results.costs ?? null,
+    costsSha256: results.costsSha256 ?? null,
     ruleSheet: results.ruleSheet ?? null,
     variantsTried: results.variantsTried ?? null,
     verdict,
@@ -408,7 +427,12 @@ export function logLine(report) {
     runAt: report.runAt,
     case: report.case,
     source: report.source,
-    inputs: { blockId: report.blockId, runs: report.runs, costs: report.costs },
+    inputs: {
+      blockId: report.blockId,
+      runs: report.runs,
+      costs: report.costs,
+      costsSha256: report.costsSha256,
+    },
     ruleSheet: report.ruleSheet,
     confidence: report.checks.C1.metrics?.confidence ?? null,
     checks,

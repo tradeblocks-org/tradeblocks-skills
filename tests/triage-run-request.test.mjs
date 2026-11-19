@@ -256,3 +256,59 @@ test("CLI prints the request", () => {
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /^USAGE/);
 });
+
+test("v2 fix 3: naive switches off every lever not on the keep list (fail closed)", () => {
+  const { configPath } = setup();
+  const sc = loadScenarios(readConfig(configPath));
+  const s = settings({
+    allocationPercentage: 5,
+    capProfits: true,
+    capLosses: true,
+    maxOpenTrades: 3,
+    useOpeningRangeBreakoutHighLow: true,
+    exitConditions: [
+      {
+        maxLoss: 200,
+        isMaxLossPerLeg: true,
+        legExitDeltas: [{ leg: 1, delta: 30 }],
+        exitUnderlyingPriceMoveUp: 1.5,
+        profitType: "ClosingOrder",
+      },
+    ],
+    someFutureLever: true,
+    someFutureMode: "On",
+  });
+  const naive = runRequest(s, sc, "X").runs.find((r) => r.role === "naive");
+  assert.equal(naive.set.allocationPercentage, 0);
+  assert.equal(naive.set.capProfits, false);
+  assert.equal(naive.set.capLosses, false);
+  assert.equal(naive.set.maxOpenTrades, null);
+  assert.equal(naive.set.useOpeningRangeBreakoutHighLow, false);
+  assert.equal(naive.set.someFutureLever, false);
+  const g = naive.exitConditions[0];
+  assert.equal(g.isMaxLossPerLeg, false);
+  assert.deepEqual(g.legExitDeltas, []);
+  assert.equal(g.exitUnderlyingPriceMoveUp, null);
+  assert.equal("profitType" in g, false, "unit fields stay");
+  // An unknown text field cannot be switched off safely: it is listed for review.
+  assert.deepEqual(naive.reviewByHand, ["someFutureMode"]);
+  // Entry day/time and structure stay.
+  assert.equal("legs" in naive.set, false);
+  assert.equal("entryTime" in naive.set, false);
+});
+
+test("v2 fix 4: the request carries the sha256 of the cost scenarios it used", () => {
+  const { configPath } = setup();
+  const out = runRequest(
+    settings(),
+    loadScenarios(readConfig(configPath)),
+    "X",
+  );
+  assert.match(out.costsSha256, /^[0-9a-f]{64}$/);
+  const again = runRequest(
+    settings(),
+    loadScenarios(readConfig(configPath)),
+    "X",
+  );
+  assert.equal(out.costsSha256, again.costsSha256);
+});

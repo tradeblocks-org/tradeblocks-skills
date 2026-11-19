@@ -15,6 +15,7 @@
 
 import { readFileSync, realpathSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const COST_FIELDS = [
@@ -116,8 +117,6 @@ const round = (x) => Math.round(x * 1e6) / 1e6;
 // Run request
 // ---------------------------------------------------------------------------
 
-const ENTRY_FILTER = /^entry(Min|Max|Vix(Min|Max)|Sma|IntradayEma)/;
-
 /** Does Option Omega honour the author's intra-minute stops (SPX/SPY, every leg 0 DTE)? */
 export function usesIntraMinuteStops(p) {
   const anyGroup = (p.exitConditions ?? []).some(
@@ -144,35 +143,91 @@ function changedOnly(patch, current) {
 const sameCosts = (a, b) =>
   COST_FIELDS.every((f) => Math.abs(a[f] - b[f]) < 1e-9);
 
+// Naive run, fail closed: keep only the strategy's structure, expiry, strike
+// rule, entry days and times and the date range; every other field is a lever
+// and is switched off. Unit fields (…Type) stay; they mean nothing once the
+// field they describe is off.
+const KEEP_TOP = new Set([
+  "underlying",
+  "legs",
+  "strikeOffsetType",
+  "useExactDte",
+  "roundStrikesToNearest",
+  "rangeStart",
+  "rangeEnd",
+  "startingFunds",
+  "entryTime",
+  "additionalEntryTimes",
+  "useFloatingEntryTime",
+  "minEntryTime",
+  "maxEntryTime",
+  "weeklyEntries",
+  "monthlyEntryDay",
+  "monthlyEntryOrdinal",
+  "specificEntryDays",
+  "ignoreMarginRequirements",
+  "exitConditions",
+  ...COST_FIELDS,
+]);
+// Text fields that only parametrise a feature switched off elsewhere.
+const HARMLESS_TEXT = new Set([
+  "breakoutCondition",
+  "openingRangeBreakoutEndTime",
+]);
+// Text fields whose null value disables a filter.
+const NULLABLE_TEXT = new Set([
+  "entrySmaCondition",
+  "entryIntradayEmaCondition",
+]);
+const KEEP_EXIT = new Set(["id", "name", "legIds"]);
+const isUnit = (k) => /Type$/.test(k);
+
+/** The "off" value of a field, or undefined when it cannot be switched off safely. */
+function offValue(value) {
+  if (typeof value === "boolean") return false;
+  if (typeof value === "number") return null;
+  if (Array.isArray(value)) return [];
+  if (value === null) return null;
+  if (typeof value === "object") return null;
+  return undefined;
+}
+
 /** Field changes that turn the author run into its naive version. */
 function naiveChanges(p) {
   const set = {};
+  const reviewByHand = [];
   for (const [k, v] of Object.entries(p)) {
-    if (ENTRY_FILTER.test(k) && v !== null && v !== undefined && v !== false)
+    if (KEEP_TOP.has(k) || isUnit(k) || HARMLESS_TEXT.has(k)) continue;
+    if (NULLABLE_TEXT.has(k)) {
       set[k] = null;
+      continue;
+    }
+    const off = offValue(v);
+    if (off === undefined) reviewByHand.push(k);
+    else set[k] = off;
   }
-  if (p.useOpeningRangeBreakout) set.useOpeningRangeBreakout = false;
-  if ((p.reentryConditions ?? []).length > 0) set.reentryConditions = [];
-  // Fixed size: one constant contract count per entry, no allocation-based sizing.
+  // Fixed size: one constant contract count per entry, no allocation sizing.
   set.maxContractsPerTrade = p.maxContractsPerTrade || 1;
-  if (p.capitalPerContract) set.capitalPerContract = null;
-  const exitConditions = (p.exitConditions ?? []).map(() => ({
-    maxProfit: null,
-    maxLoss: null,
-    isTrailingStopLoss: false,
-    useProfitActions: false,
-    profitActions: [],
-    useTimeActions: false,
-    timeActions: [],
-    exitAtDte: null,
-    exitAtDit: null,
-    exitAtMit: null,
-    exitTime: null,
-    exitWhenPutTested: false,
-    exitWhenCallTested: false,
-    useIntraMinuteStop: false,
-  }));
-  return { set, exitConditions };
+  set.allocationPercentage = 0;
+  const exitConditions = (p.exitConditions ?? []).map((group) => {
+    const g = {};
+    for (const [k, v] of Object.entries(group)) {
+      if (KEEP_EXIT.has(k) || isUnit(k)) continue;
+      g[k] = typeof v === "string" ? null : (offValue(v) ?? null);
+    }
+    // Defaults the author may have left out: state them, so nothing is implied.
+    for (const k of ["maxProfit", "maxLoss"]) if (!(k in g)) g[k] = null;
+    for (const k of [
+      "useIntraMinuteStop",
+      "useProfitActions",
+      "useTimeActions",
+      "isTrailingStopLoss",
+    ]) {
+      if (!(k in g)) g[k] = false;
+    }
+    return g;
+  });
+  return { set, exitConditions, reviewByHand: reviewByHand.sort() };
 }
 
 /**
@@ -213,6 +268,7 @@ export function runRequest(settings, scenarios, authorLabel, have = []) {
       from: "author",
       set: { ...base, ...n.set },
       exitConditions: n.exitConditions,
+      reviewByHand: n.reviewByHand,
       why: "author run minus every optional lever (profit target, stops, time and tested exits, entry filters, re-entry, sizing), held to expiry, at base costs",
     });
   }
@@ -248,7 +304,17 @@ export function runRequest(settings, scenarios, authorLabel, have = []) {
       );
     }
   }
-  return { flags, baseScenario: scenarios.baseName, runs };
+  return {
+    flags,
+    baseScenario: scenarios.baseName,
+    // Identifies the exact cost values used, for the check results and the log.
+    costsSha256: createHash("sha256")
+      .update(
+        JSON.stringify({ base: scenarios.base, cost2x: scenarios.cost2x }),
+      )
+      .digest("hex"),
+    runs,
+  };
 }
 
 // ---------------------------------------------------------------------------
