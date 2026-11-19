@@ -304,7 +304,9 @@ test("C1 score: weighted share of stated fields; assumed core field caps", () =>
     },
     weights,
   );
-  assert.equal(lowC.confidence, 0.5);
+  // underlying stated (2); two secondary fields assumed (1 + 1); the six missing core
+  // fields count as assumed (6 x 2): 2 / 16.
+  assert.equal(lowC.confidence, 2 / 16);
 
   assert.throws(
     () =>

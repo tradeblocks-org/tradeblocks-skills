@@ -76,10 +76,6 @@
   },
   "author_costs_match_base": true,
   "variants_tried": 1,
-  "costs": {
-    "scenario": "synthetic",
-    "note": "synthetic example; real triages take costs from the local config"
-  },
   "expected_checks": {
     "C1": "pass",
     "C2": "cap",

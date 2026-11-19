@@ -103,7 +103,16 @@ test("author costs off the base: author_base, naive, cost_2x, minute_stop (four 
   );
   assert.equal(naive.set.useOpeningRangeBreakout, false);
   assert.deepEqual(naive.set.reentryConditions, []);
-  assert.equal(naive.set.maxContractsPerTrade, 2);
+  assert.equal(
+    "maxContractsPerTrade" in naive.set,
+    false,
+    "unchanged fields are not listed",
+  );
+  assert.equal(
+    runRequest(settings({ maxContractsPerTrade: 0 }), sc, "X").runs[1].set
+      .maxContractsPerTrade,
+    1,
+  );
   assert.equal(naive.exitConditions[0].maxLoss, null);
   assert.equal(naive.exitConditions[0].maxProfit, null);
   assert.equal(naive.exitConditions[0].useProfitActions, false);
@@ -116,6 +125,18 @@ test("author costs off the base: author_base, naive, cost_2x, minute_stop (four 
     closingFees: 2,
   });
   assert.deepEqual(ms.exitConditions, [{ useIntraMinuteStop: false }]);
+  // Only real changes: naive's exit group lists no field the author already has.
+  assert.equal("isTrailingStopLoss" in naive.exitConditions[0], true);
+  const quiet = runRequest(
+    settings({
+      exitConditions: [
+        { maxLoss: 200, isTrailingStopLoss: false, useIntraMinuteStop: true },
+      ],
+    }),
+    sc,
+    "X",
+  ).runs[1];
+  assert.equal("isTrailingStopLoss" in quiet.exitConditions[0], false);
   assert.deepEqual(ms.set, COSTS.scenarios.base);
 });
 

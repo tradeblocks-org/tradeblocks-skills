@@ -84,7 +84,10 @@ export function validateThresholds(thresholds) {
   }
 }
 
-/** Every rule field present (n/a allowed), no unknown names, a known status each (R1). */
+/**
+ * R1: no unknown names, a known status each, every secondary field present
+ * (n/a allowed). A core field missing from the sheet counts as assumed.
+ */
 export function validateRuleSheet(ruleSheet, weights) {
   if (!ruleSheet || typeof ruleSheet !== "object")
     fail("BAD_RULE_SHEET", "rule sheet missing");
@@ -93,9 +96,9 @@ export function validateRuleSheet(ruleSheet, weights) {
   const unknown = Object.keys(ruleSheet).filter((f) => !known.includes(f));
   if (unknown.length > 0)
     fail("BAD_RULE_SHEET", `unknown fields: ${unknown.join(", ")}`);
-  const missing = known.filter((f) => !(f in ruleSheet));
+  const missing = weights.secondaryFields.filter((f) => !(f in ruleSheet));
   if (missing.length > 0)
-    fail("BAD_RULE_SHEET", `missing fields: ${missing.join(", ")}`);
+    fail("BAD_RULE_SHEET", `missing secondary fields: ${missing.join(", ")}`);
   for (const [field, entry] of Object.entries(ruleSheet)) {
     if (!["stated", "assumed", "n/a"].includes(entry?.status)) {
       fail(
@@ -126,7 +129,12 @@ export function translationConfidence(ruleSheet, weights) {
   const assumedCore = [];
   const assumed = [];
   const unknown = [];
-  for (const [field, entry] of Object.entries(ruleSheet ?? {})) {
+  // A core field missing from the sheet counts as assumed (C1 caps).
+  const sheet = { ...(ruleSheet ?? {}) };
+  for (const f of weights.coreFields) {
+    if (!(f in sheet)) sheet[f] = { value: null, status: "assumed" };
+  }
+  for (const [field, entry] of Object.entries(sheet)) {
     const status = entry?.status;
     if (!["stated", "assumed", "n/a"].includes(status)) {
       fail(

@@ -38,6 +38,5 @@
     "rangeEnd": "<yyyy-MM-dd of the author run>"
   },
   "author_costs_match_base": false,
-  "variants_tried": 1,
-  "costs": { "base": "<base scenario name from the local config>", "cost2x": "<2x scenario name or base x2>" }
+  "variants_tried": 1
 }

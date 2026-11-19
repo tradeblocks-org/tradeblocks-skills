@@ -132,6 +132,15 @@ function costsOf(p) {
   return Object.fromEntries(COST_FIELDS.map((f) => [f, p[f] ?? 0]));
 }
 
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/** The entries of `patch` whose value differs from `current`. */
+function changedOnly(patch, current) {
+  return Object.fromEntries(
+    Object.entries(patch).filter(([k, v]) => !same(v, current[k])),
+  );
+}
+
 const sameCosts = (a, b) =>
   COST_FIELDS.every((f) => Math.abs(a[f] - b[f]) < 1e-9);
 
@@ -230,6 +239,15 @@ export function runRequest(settings, scenarios, authorLabel, have = []) {
   }
   if (runs.length > MAX_RUNS)
     fail("TOO_MANY_RUNS", `${runs.length} runs requested`);
+  // List only the fields that really change, so the request is exact.
+  for (const r of runs) {
+    r.set = changedOnly(r.set, p);
+    if (r.exitConditions) {
+      r.exitConditions = r.exitConditions.map((e, i) =>
+        changedOnly(e, p.exitConditions[i] ?? {}),
+      );
+    }
+  }
   return { flags, baseScenario: scenarios.baseName, runs };
 }
 

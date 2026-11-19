@@ -63,10 +63,7 @@
     "naive": "A2-naive",
     "cost_2x": "A2-cost2x"
   },
-  "costs": {
-    "scenario": "synthetic",
-    "note": "synthetic example; real triages take costs from the local config"
-  },
+  "costs": null,
   "variantsTried": 1,
   "authorUsesIntraMinuteStops": false,
   "authorCostsMatchBase": true,

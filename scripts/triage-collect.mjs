@@ -320,7 +320,8 @@ export function resultsFor(id, manifest, checks, tbVersion) {
     ruleSheet: manifest.rule_sheet,
     blockId: manifest.block_id,
     runs: manifest.runs,
-    costs: manifest.costs ?? null,
+    // Cost scenario names come from the local config, never from the manifest.
+    costs: null,
     variantsTried: manifest.variants_tried,
     authorUsesIntraMinuteStops: manifest.oo_settings.useIntraMinuteStop,
     authorCostsMatchBase: manifest.author_costs_match_base,

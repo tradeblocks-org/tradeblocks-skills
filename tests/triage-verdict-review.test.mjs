@@ -91,17 +91,42 @@ test("P2: a missing intra-minute flag is refused, never read as 'no intra-minute
 
 // --- P3/P4: every rule field, no unknown names --------------------------------
 
-test("P3: a rule sheet without every rule field is refused", () => {
-  const r = passing({
-    source: { ref: "x", description: "text" },
-    ruleSheet: { underlying: { value: "SPX", status: "stated" } },
-  });
-  assert.throws(
-    () => evaluate(r, thresholds),
-    /^Error: BAD_RULE_SHEET: missing fields: structure/,
+test("P3: a missing core field counts as assumed; missing secondary fields are refused", () => {
+  const only = { ...sheet("stated") };
+  for (const f of ["structure", "legs", "dte", "entry_time", "stop", "exit"])
+    delete only[f];
+  const report = evaluate(
+    passing({ source: { ref: "x", description: "text" }, ruleSheet: only }),
+    thresholds,
   );
-  const noSheet = passing({ ruleSheet: null });
-  assert.throws(() => evaluate(noSheet, thresholds), /^Error: BAD_RULE_SHEET/);
+  assert.equal(report.checks.C1.outcome, "cap");
+  assert.deepEqual(report.checks.C1.metrics.assumedCore, [
+    "structure",
+    "legs",
+    "dte",
+    "entry_time",
+    "stop",
+    "exit",
+  ]);
+  assert.equal(report.verdict, "unclear");
+
+  const noSecondary = sheet("stated");
+  delete noSecondary.fills;
+  assert.throws(
+    () =>
+      evaluate(
+        passing({
+          source: { ref: "x", description: "text" },
+          ruleSheet: noSecondary,
+        }),
+        thresholds,
+      ),
+    /^Error: BAD_RULE_SHEET: missing secondary fields: fills/,
+  );
+  assert.throws(
+    () => evaluate(passing({ ruleSheet: null }), thresholds),
+    /^Error: BAD_RULE_SHEET/,
+  );
 });
 
 test("P4: a misnamed field is refused instead of silently dropped", () => {

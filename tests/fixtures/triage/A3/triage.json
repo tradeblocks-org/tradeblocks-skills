@@ -76,10 +76,6 @@
   },
   "author_costs_match_base": true,
   "variants_tried": 1,
-  "costs": {
-    "scenario": "synthetic",
-    "note": "synthetic example; real triages take costs from the local config"
-  },
   "source": {
     "ref": "Synthetic case A3",
     "description": "Synthetic source for case A3: sell a 7 DTE SPX put spread every Monday at 09:35, skip filter-off days, hold to expiry."

@@ -232,10 +232,6 @@ function manifest(id, runs, extra = {}) {
     oo_settings: ooSettings(RANGE),
     author_costs_match_base: true,
     variants_tried: 1,
-    costs: {
-      scenario: "synthetic",
-      note: "synthetic example; real triages take costs from the local config",
-    },
     ...extra,
   };
 }

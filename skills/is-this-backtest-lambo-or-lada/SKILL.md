@@ -39,7 +39,7 @@ Read `triage.json`. Call `get_block_info` for `block_id` and confirm every run l
 
 Check that the server offers the tools and options in `thresholds.json` → `requires`. A missing tool or option makes its check **not run** (verdict at most unclear); say which one.
 
-**Checked run.** Every check below reads the run on the user's **base costs**: `author_base` when the manifest has it, else `author`. Below, "author" means that checked run.
+**Checked run.** Every check below reads the run on the user's **base costs** (the local config's cost file; the manifest carries no costs): `author_base` when the manifest has it, else `author`. Below, "author" means that checked run.
 
 ### 2. Rule sheet and data check
 
@@ -49,7 +49,7 @@ Check that the server offers the tools and options in `thresholds.json` → `req
 
 **C3 expiry calendar.** `get_rule_calendar` with the author run, the rule from the settings (`entryWeekdays`, 1 = Monday, or `"daily"`; `dte`; `selection: "exact"` with exact DTE, else `"firstAtLeast"`; `entryWindow` from the first to the last entry time) and `dateRange` = the author run's own Option Omega start and end date (so a record that starts late shows as missing days). Metrics:
 - `maxYearDteMismatchShare` = `dte.maxYearMismatchShare` of the **author** run.
-- `missingRuleDayShare` = `missingRuleDays.share` of the **naive** run when the author's settings list entry filters (days a filter skips are not missing), else of the author run. With entry filters and no naive run yet, set it to `null` with a `notRunReason`: that part is not run and caps, the DTE part still counts.
+- `missingRuleDayShare` = `missingRuleDays.share` of the **naive** run when the author's settings list entry filters (days a filter skips are not missing), else of the author run. With entry filters the naive run does not exist yet at step 2: set it to `null` with a `notRunReason` for now (the DTE part still counts) and read it from the naive run after step 4, before the gate; if the naive run never arrives, that part stays not run and caps.
 
 If a C3 rule triggers, **stop with "unclear"** (the verdict script enforces it: later checks are logged, not counted): the backtest is not the strategy. Tell the user which rule to fix (e.g. exact DTE, a start date with daily expiries) and to rerun; this never rejects the strategy. How Option Omega picks expiries: [references/oo-observed-behaviour.md](references/oo-observed-behaviour.md).
 
@@ -66,7 +66,7 @@ It reads the base scenario through the local config and prints the runs still ne
 
 ### 4. Runs in the block
 
-Re-check the labels as in step 1. A run still missing stays missing: its check is not run and the verdict is capped. With the author run alone the verdict is never "continue"; off the base costs without `author_base` it is at most "unclear".
+Re-check the labels as in step 1. If the author uses entry filters, now read C3's missing-day part from the naive run (step 2); if that C3 rule triggers, stop with "unclear". A run still missing stays missing: its check is not run and the verdict is capped. With the author run alone the verdict is never "continue"; off the base costs without `author_base` it is at most "unclear".
 
 ### 5. Gate C4 - better than the naive version?
 
@@ -85,7 +85,7 @@ Run every check even after one fails, so the log holds complete rows (N50).
 
 ### 7. Verdict
 
-Write `check-results.json` in the run folder (root from the local config): `case`, `runAt` (ISO time of this run), `source` (`{ref, description}` or null), `ruleSheet` (all 13 fields), `blockId`, `runs`, `costs` (scenario names used), `variantsTried` (from the manifest; logged only in V1), `authorUsesIntraMinuteStops` and `authorCostsMatchBase` (both required, from the run request), `checks` (`{ "C2": { "metrics": {...} }, ... }`; a check that could not run: `{ "notRun": "<reason>" }`; one metric that could not be read: `null` plus `"notRunReason"`), `versions` (`tradeblocks`, `optionomega` when known), `ooRunIds`, `runFolder`. Then:
+Write `check-results.json` in the run folder (root from the local config): `case`, `runAt` (ISO time of this run), `source` (`{ref, description}` or null), `ruleSheet` (all 13 fields), `blockId`, `runs`, `costs` (the base and 2x scenario names from the local config; never from the manifest), `variantsTried` (from the manifest; logged only in V1), `authorUsesIntraMinuteStops` and `authorCostsMatchBase` (both required, from the run request), `checks` (`{ "C2": { "metrics": {...} }, ... }`; a check that could not run: `{ "notRun": "<reason>" }`; one metric that could not be read: `null` plus `"notRunReason"`), `versions` (`tradeblocks`, `optionomega` when known), `ooRunIds`, `runFolder`. Then:
 
 ```
 node "${CLAUDE_SKILL_DIR}/../../scripts/triage-verdict.mjs" \
