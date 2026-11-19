@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **`is-this-backtest-lambo-or-lada` (new).** Triage of a third-party SPX options strategy from an existing Option Omega backtest or trade log: **continue**, **reject** or **unclear** from eight fixed checks in a fixed order: fidelity to the source (C1), sample size (C2), expiry calendar (C3), the baseline gate against the strategy's naive version (C4), top-day dependence (C5), stress windows (C6), 2x slippage (C7) and minute instead of intra-minute stops (C8). Input is one TradeBlocks block holding every run plus a `triage.json` manifest; the skill never runs Option Omega and writes a run request for the runs it still needs. Thresholds live in `thresholds.json` (user copy overrides). `scripts/triage-verdict.mjs` (no dependencies) computes the verdict, caps it for missing runs, appends a JSONL log line and writes a phone-readable summary. Needs TradeBlocks with `get_rule_calendar`, `paired_bootstrap_comparison` `unobservedDays`/`grid` and `get_statistics` `topDays`/`capitalBasis` (TradeBlocks PRs #639-#642); without them the matching checks are reported as not run. Calibration cases A1-A7 are synthetic fixtures under `tests/fixtures/triage/`, regenerated with `scripts/triage-fixtures.mjs` and `scripts/triage-collect.mjs`.
+
 ## 4.0.2
 
 ### Fixed

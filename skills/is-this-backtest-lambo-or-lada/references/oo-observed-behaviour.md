@@ -8,6 +8,8 @@ An entry rule such as "every Monday" skips an exchange holiday; the entry is **n
 
 Consequence for C3: a rule day is a matching weekday that is an NYSE session. `get_rule_calendar` never counts a holiday as a missing entry.
 
+An entry filter (any filter in the author run's settings) skips rule days on purpose, so the author run's own missing-day share says nothing about the calendar. C3 therefore reads missing rule days from the **naive** run, which keeps the calendar but drops the filters, and the DTE mismatch from the **author** run. Until the naive run exists, the missing-day part of C3 is not run and caps the verdict.
+
 ## Days to expiry
 
 DTE is counted in **calendar days** from the entry date to the expiry.

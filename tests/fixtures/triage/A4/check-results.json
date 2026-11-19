@@ -1,5 +1,5 @@
 {
-  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2-local.2 (upstream 84358097 + PRs #639, #640, #641 and the capital-basis/top-days change) and read with the TB calls in SKILL.md. Regenerate after a threshold-relevant TB change.",
+  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2-local.2 and read with the TradeBlocks calls in SKILL.md (scripts/triage-collect.mjs).",
   "case": "A4",
   "runAt": "2026-11-19T00:00:00Z",
   "source": {
@@ -97,25 +97,7 @@
       "metrics": {
         "stressPeriodsInRecord": 4,
         "worstStressLossInAvgMonths": 4.0425956784128525
-      },
-      "windows": [
-        {
-          "name": "bear_2022",
-          "netPl": 1133.92
-        },
-        {
-          "name": "svb_crisis",
-          "netPl": 135.81
-        },
-        {
-          "name": "vix_aug_2024",
-          "netPl": -539.24
-        },
-        {
-          "name": "liberation_day",
-          "netPl": 128.22
-        }
-      ]
+      }
     },
     "C7": {
       "metrics": {

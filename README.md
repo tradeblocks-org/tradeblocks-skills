@@ -21,6 +21,7 @@ Guided workflows that chain TradeBlocks MCP tools together for common analysis t
 | `market-data` | Market data setup — fetch daily and intraday bars, VIX context, and option quotes, or import minute bars from CSV or DuckDB |
 | `oo-capture` | Capture a saved OO backtest, saved portfolio or run as one verified TradeBlocks block with its marked daily curve (whole-book for a portfolio) |
 | `is-this-optimum-real` | Test an OO optimizer winner against a stable-region centre using separately verified scratch runs and a paired TradeBlocks comparison |
+| `is-this-backtest-lambo-or-lada` | Triage a third-party SPX options backtest: continue, reject or unclear from eight fixed checks (baseline vs. naive version, top days, stress, 2x slippage, minute stops, sample, expiry calendar, fidelity to the source) and a thresholds file |
 
 ## Install
 
@@ -89,6 +90,21 @@ Option Omega CSV --> import_csv --> DuckDB --> Tools --> Skills --> Analysis
                               Market data (daily/intraday)
                               via fetch_bars / fetch_quotes / import_market_csv
 ```
+
+## Regenerating fixtures
+
+The triage skill's calibration cases live in `tests/fixtures/triage/<case>/`: a synthetic Option Omega trade log (`tradelog.csv`), its manifest (`triage.json`) and the frozen check results read from TradeBlocks (`check-results.json`). `npm test` checks every case's verdict and that a rerun is byte-identical.
+
+Developer tools, not used by the skill:
+
+```
+node scripts/triage-fixtures.mjs            # rewrite tradelog.csv + triage.json (seeded, deterministic)
+TRIAGE_TB_URL=<MCP endpoint of a TradeBlocks server> \
+TRIAGE_TB_IMPORT_ROOT=<this fixtures folder as the server sees it> \
+  node scripts/triage-collect.mjs --tb-version <server version>   # rewrite check-results.json
+```
+
+`triage-collect.mjs` makes the TradeBlocks calls the skill's SKILL.md prescribes. Leave `TRIAGE_TB_IMPORT_ROOT` unset when the blocks already exist on the server. Regenerate after a TradeBlocks change that affects these tools, and review the diff before committing.
 
 ## Links
 

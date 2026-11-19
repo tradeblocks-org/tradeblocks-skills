@@ -46,7 +46,7 @@ Check that the server offers the tools and options in `thresholds.json` → `req
 
 **C3 expiry calendar.** `get_rule_calendar` with the author run and the rule from the settings: `entryWeekdays` (1 = Monday), `dte`, `selection: "exact"` when the run uses exact DTE, else `"firstAtLeast"`, and `entryWindow` when stated. Metrics:
 - `maxYearDteMismatchShare` = `dte.maxYearMismatchShare` of the **author** run.
-- `missingRuleDayShare` = `missingRuleDays.share` of the **naive** run when the author run uses entry filters (its Option Omega settings list any; days a filter skips are not missing), else of the author run.
+- `missingRuleDayShare` = `missingRuleDays.share` of the **naive** run when the author run uses entry filters (its Option Omega settings list any; days a filter skips are not missing), else of the author run. With entry filters and no naive run yet, set it to `null` with a `notRunReason`: that part of C3 is not run and caps the verdict, the DTE part still counts.
 
 If C3 caps here, **stop with "unclear"**: the backtest is not the strategy. Tell the user which rule to fix (e.g. exact DTE, a start date with daily expiries) and to rerun; this never rejects the strategy itself. See [references/oo-observed-behaviour.md](references/oo-observed-behaviour.md) for how Option Omega picks expiries.
 
@@ -69,13 +69,13 @@ If `point <= 0` the strategy does not beat its naive version: the verdict is **r
 Run every check even after one fails, so the log holds complete rows (N50).
 
 - **C5 top days.** `get_statistics` (author, `topDays: [1, 5, 10]`) → `plWithoutBest5` = the `pl` of the `n: 5` entry of `plWithoutBestDays`; `best10Share` = `shareOfTotal` of `n: 10` (use `1` when it is null: total not positive); `positiveYearShare`.
-- **C6 stress.** `stress_test` (block) lists the built-in windows that have trades; ignore custom and `*_recovery` windows. For each window, `get_statistics` (author, `startDate`/`endDate` = the window) → `stats.netPl`. `stressPeriodsInRecord` = number of windows; `worstStressLossInAvgMonths` = (−worst window net P&L) / (author net P&L / `months` from C2); `0` when no window lost, `99` when the average month is not positive.
+- **C6 stress.** `stress_test` (block) lists TradeBlocks' built-in stress windows that have trades (take the dates from its `scenarios[].dateRange`, never from memory); ignore custom and `*_recovery` windows. `stress_test` covers the whole block, so the author's P&L per window comes from `get_statistics`: for each window, `get_statistics` (author, `startDate`/`endDate` = the window) → `stats.netPl`. `stressPeriodsInRecord` = number of windows; `worstStressLossInAvgMonths` = (−worst window net P&L) / (author net P&L / `months` from C2); `0` when no window lost, `99` when the average month is not positive.
 - **C7 costs.** `get_statistics` (cost_2x) → `cost2xPl = stats.netPl`; `cost2xKeepShare` = cost2xPl / author net P&L (`0` when the author's net P&L is not positive).
 - **C8 minute stops** (only when the author uses intra-minute stops). `get_statistics` (minute_stop) → `minuteStopPl = stats.netPl`; `minuteStopDropShare` = 1 − minuteStopPl / author net P&L.
 
 ### 7. Verdict
 
-Write `check-results.json` in the run folder: `case`, `runAt` (ISO time of this run), `source` (`{ref}` or null), `ruleSheet`, `runs`, `variantsTried` (from the manifest; logged only in V1), `authorUsesIntraMinuteStops`, `checks` (`{ "C2": { "metrics": {...} }, ... }`; a check that could not run: `{ "notRun": "<reason>" }`), `versions` (`tradeblocks`, `optionomega` when known), `ooRunIds`, `runFolder`. Then:
+Write `check-results.json` in the run folder: `case`, `runAt` (ISO time of this run), `source` (`{ref}` or null), `ruleSheet`, `runs`, `variantsTried` (from the manifest; logged only in V1), `authorUsesIntraMinuteStops`, `checks` (`{ "C2": { "metrics": {...} }, ... }`; a check that could not run: `{ "notRun": "<reason>" }`; one metric that could not be read: `null` plus `"notRunReason"`), `versions` (`tradeblocks`, `optionomega` when known), `ooRunIds`, `runFolder`. Then:
 
 ```
 node "${CLAUDE_SKILL_DIR}/../../scripts/triage-verdict.mjs" \

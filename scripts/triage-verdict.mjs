@@ -84,15 +84,24 @@ export function translationConfidence(ruleSheet, weights) {
 // Evaluation
 // ---------------------------------------------------------------------------
 
+/**
+ * Apply a check's rules. A metric that is absent makes the whole check not
+ * run; a metric that is explicitly null means only that part could not run:
+ * its rule is skipped, the check is capped, the other rules still apply.
+ */
 function applyRules(rules, metrics) {
-  const missing = rules.map((r) => r.metric).filter((m) => typeof metrics?.[m] !== "number");
-  if (missing.length > 0) return { outcome: null, missing, triggered: [] };
-  const triggered = rules.filter((r) => OPS[r.op](metrics[r.metric], r.value));
-  const outcome = triggered.reduce(
+  const missing = rules.map((r) => r.metric).filter((m) => metrics?.[m] === undefined);
+  if (missing.length > 0) return { outcome: null, missing, notRunParts: [], triggered: [] };
+  const notRunParts = rules.map((r) => r.metric).filter((m) => metrics[m] === null);
+  const bad = rules.map((r) => r.metric).filter((m) => metrics[m] !== null && typeof metrics[m] !== "number");
+  if (bad.length > 0) fail("BAD_RESULTS", `metrics must be numbers or null: ${bad.join(", ")}`);
+  const triggered = rules.filter((r) => metrics[r.metric] !== null && OPS[r.op](metrics[r.metric], r.value));
+  let outcome = triggered.reduce(
     (worst, r) => (SEVERITY[r.outcome] > SEVERITY[worst] ? r.outcome : worst),
     "pass",
   );
-  return { outcome, missing: [], triggered };
+  if (notRunParts.length > 0 && SEVERITY[outcome] < SEVERITY.cap) outcome = "cap";
+  return { outcome, missing: [], notRunParts, triggered };
 }
 
 function notRun(reason) {
@@ -135,15 +144,23 @@ export function evaluate(results, thresholds, { thresholdsSha256 = null } = {}) 
     } else if (!supplied || supplied.notRun) {
       row = notRun(supplied?.notRun ?? "no result supplied");
     } else {
-      const { outcome, missing, triggered } = applyRules(def.rules, supplied.metrics);
+      const { outcome, missing, notRunParts, triggered } = applyRules(def.rules, supplied.metrics);
       row =
         outcome === null
           ? notRun(`metrics missing: ${missing.join(", ")}`)
-          : { status: "run", outcome, metrics: supplied.metrics, triggered };
+          : {
+              status: notRunParts.length > 0 ? "partial" : "run",
+              outcome,
+              metrics: supplied.metrics,
+              triggered,
+              ...(notRunParts.length > 0
+                ? { reason: supplied.notRunReason ?? `not run: ${notRunParts.join(", ")}` }
+                : {}),
+            };
     }
 
     // R9 guard: an interval that excludes its own point estimate is unreliable.
-    if (id === "C4" && row.status === "run") {
+    if (id === "C4" && (row.status === "run" || row.status === "partial")) {
       const { point, ciLow, ciHigh } = row.metrics;
       if (typeof ciHigh === "number" && (point < ciLow || point > ciHigh)) {
         row.unreliable = "bootstrap interval excludes its own point estimate";
@@ -168,7 +185,7 @@ export function evaluate(results, thresholds, { thresholdsSha256 = null } = {}) 
       : "continue";
 
   const notTested = ORDER.filter((id) =>
-    ["not_run", "skipped", "not_applicable"].includes(rows[id].status),
+    ["not_run", "partial", "skipped", "not_applicable"].includes(rows[id].status),
   ).map((id) => ({ id, name: rows[id].name, status: rows[id].status, reason: rows[id].reason }));
 
   return {
@@ -245,10 +262,15 @@ export function summary(report, thresholds) {
     const r = report.checks[id];
     const def = thresholds.checks[id];
     let detail;
-    if (r.status === "run") {
+    if (r.status === "run" || r.status === "partial") {
       detail = def.rules
-        .map((rule) => `${rule.metric} ${fmt(r.metrics[rule.metric], rule.unit)} (${rule.outcome} if ${rule.op} ${fmt(rule.value, rule.unit)})`)
+        .map((rule) =>
+          r.metrics[rule.metric] === null
+            ? `${rule.metric} not run`
+            : `${rule.metric} ${fmt(r.metrics[rule.metric], rule.unit)} (${rule.outcome} if ${rule.op} ${fmt(rule.value, rule.unit)})`,
+        )
         .join("; ");
+      if (r.status === "partial") detail += ` — ${r.reason}`;
     } else {
       detail = `${r.status.replace("_", " ")}: ${r.reason}`;
     }

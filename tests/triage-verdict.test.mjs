@@ -158,6 +158,29 @@ test("a check without results or with incomplete metrics is not run", () => {
   assert.equal(report.verdict, "unclear");
 });
 
+test("a null metric is a part not run: capped, the other rules still apply", () => {
+  // C3 without a naive run on a filtered author: missing rule days cannot be read.
+  const r = passing({ runs: { author: "a", cost_2x: "c" } });
+  r.checks.C3 = {
+    metrics: { maxYearDteMismatchShare: 0, missingRuleDayShare: null },
+    notRunReason: "missing rule days need the naive run (author uses entry filters)",
+  };
+  let report = evaluate(r, thresholds);
+  assert.equal(report.checks.C3.status, "partial");
+  assert.equal(report.checks.C3.outcome, "cap");
+  assert.match(report.checks.C3.reason, /need the naive run/);
+  assert.ok(report.notTested.some((n) => n.id === "C3" && n.status === "partial"));
+  assert.match(summary(report, thresholds), /missingRuleDayShare not run/);
+
+  r.checks.C3.metrics.maxYearDteMismatchShare = 0.4;
+  report = evaluate(r, thresholds);
+  assert.equal(report.checks.C3.outcome, "cap");
+  assert.ok(report.checks.C3.triggered.some((t) => t.metric === "maxYearDteMismatchShare"));
+
+  r.checks.C3.metrics.maxYearDteMismatchShare = "high";
+  assert.throws(() => evaluate(r, thresholds), /^Error: BAD_RESULTS/);
+});
+
 test("C8 runs with a minute_stop run and can reject", () => {
   const r = passing({
     authorUsesIntraMinuteStops: true,
