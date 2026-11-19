@@ -1,0 +1,77 @@
+{
+  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2-local.2 (upstream 84358097 + PRs #639, #640, #641 and the capital-basis/top-days change) and read with the TB calls in SKILL.md. Regenerate after a threshold-relevant TB change.",
+  "case": "A1",
+  "runAt": "2026-11-19T00:00:00Z",
+  "source": null,
+  "ruleSheet": null,
+  "runs": {
+    "author": "A1-d30-s300",
+    "naive": "A1-naive",
+    "cost_2x": "A1-cost2x"
+  },
+  "variantsTried": 35,
+  "authorUsesIntraMinuteStops": false,
+  "checks": {
+    "C2": {
+      "metrics": {
+        "trades": 167,
+        "months": 44
+      }
+    },
+    "C3": {
+      "metrics": {
+        "maxYearDteMismatchShare": 0,
+        "missingRuleDayShare": 0
+      }
+    },
+    "C4": {
+      "metrics": {
+        "point": 3.1917775354416684,
+        "ciLow": -1.7029314703744067,
+        "ciHigh": 8.17550571610323
+      }
+    },
+    "C5": {
+      "metrics": {
+        "plWithoutBest5": -903.7599999999995,
+        "best10Share": 7.989848061592958,
+        "positiveYearShare": 0.6
+      }
+    },
+    "C6": {
+      "metrics": {
+        "stressPeriodsInRecord": 4,
+        "worstStressLossInAvgMonths": 157.27819036587837
+      },
+      "windows": [
+        {
+          "name": "bear_2022",
+          "netPl": 1831.38
+        },
+        {
+          "name": "svb_crisis",
+          "netPl": 0
+        },
+        {
+          "name": "vix_aug_2024",
+          "netPl": -1049.26
+        },
+        {
+          "name": "liberation_day",
+          "netPl": 153.68
+        }
+      ]
+    },
+    "C7": {
+      "metrics": {
+        "cost2xPl": -1376.4599999999984,
+        "cost2xKeepShare": -4.689173536826315
+      }
+    }
+  },
+  "versions": {
+    "tradeblocks": "4.6.2-local.2"
+  },
+  "ooRunIds": [],
+  "runFolder": null
+}

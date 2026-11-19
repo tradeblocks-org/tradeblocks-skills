@@ -1,0 +1,49 @@
+{
+  "block_id": "triage-a1",
+  "runs": {
+    "author": "A1-d30-s300",
+    "naive": "A1-naive",
+    "cost_2x": "A1-cost2x"
+  },
+  "oo_settings": {
+    "useExactDte": true,
+    "entryDays": [
+      "Monday"
+    ],
+    "dte": 7,
+    "entryTime": "09:35",
+    "entryFilters": []
+  },
+  "variants_tried": 35,
+  "costs": {
+    "slippage_per_side": 0.05,
+    "fee_per_contract": 0.5,
+    "note": "synthetic example values"
+  },
+  "grid": {
+    "delta": [
+      10,
+      15,
+      20,
+      25,
+      30
+    ],
+    "stopPct": [
+      100,
+      150,
+      200,
+      250,
+      300,
+      350,
+      400
+    ],
+    "pick": {
+      "delta": 30,
+      "stop": 300
+    }
+  },
+  "expected_verdict": [
+    "reject",
+    "unclear"
+  ]
+}

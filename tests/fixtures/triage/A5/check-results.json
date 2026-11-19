@@ -1,0 +1,128 @@
+{
+  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2-local.2 (upstream 84358097 + PRs #639, #640, #641 and the capital-basis/top-days change) and read with the TB calls in SKILL.md. Regenerate after a threshold-relevant TB change.",
+  "case": "A5",
+  "runAt": "2026-11-19T00:00:00Z",
+  "source": {
+    "ref": "Synthetic case A5"
+  },
+  "ruleSheet": {
+    "underlying": {
+      "value": "SPX",
+      "status": "stated"
+    },
+    "structure": {
+      "value": "put credit spread",
+      "status": "stated"
+    },
+    "legs": {
+      "value": "short 20 delta, 50 wide",
+      "status": "stated"
+    },
+    "dte": {
+      "value": 7,
+      "status": "stated"
+    },
+    "entry_time": {
+      "value": "09:35",
+      "status": "stated"
+    },
+    "stop": {
+      "value": "none",
+      "status": "stated"
+    },
+    "exit": {
+      "value": "hold to expiry",
+      "status": "stated"
+    },
+    "entry_filters": {
+      "value": "skip filter-off days",
+      "status": "stated"
+    },
+    "days_traded": {
+      "value": "Monday",
+      "status": "stated"
+    },
+    "reentry": {
+      "value": "none",
+      "status": "stated"
+    },
+    "sizing": {
+      "value": "1 lot",
+      "status": "stated"
+    },
+    "fills": {
+      "value": "OO default",
+      "status": "assumed"
+    },
+    "date_range": {
+      "value": "2016-01 to 2018-12",
+      "status": "stated"
+    }
+  },
+  "runs": {
+    "author": "A5-author",
+    "naive": "A5-naive",
+    "cost_2x": "A5-cost2x"
+  },
+  "variantsTried": 1,
+  "authorUsesIntraMinuteStops": false,
+  "checks": {
+    "C2": {
+      "metrics": {
+        "trades": 112,
+        "months": 37
+      }
+    },
+    "C3": {
+      "metrics": {
+        "maxYearDteMismatchShare": 1,
+        "missingRuleDayShare": 0
+      }
+    },
+    "C4": {
+      "metrics": {
+        "point": 11.653146944083216,
+        "ciLow": 8.495600150441962,
+        "ciHigh": 15.052902663219584
+      }
+    },
+    "C5": {
+      "metrics": {
+        "plWithoutBest5": 1004.0000000000032,
+        "best10Share": 1.1340888390950037,
+        "positiveYearShare": 0.5
+      }
+    },
+    "C6": {
+      "metrics": {
+        "stressPeriodsInRecord": 3,
+        "worstStressLossInAvgMonths": 9.854131235542084
+      },
+      "windows": [
+        {
+          "name": "brexit",
+          "netPl": -271.96
+        },
+        {
+          "name": "volmageddon",
+          "netPl": 0
+        },
+        {
+          "name": "q4_2018",
+          "netPl": -660.85
+        }
+      ]
+    },
+    "C7": {
+      "metrics": {
+        "cost2xPl": 1361.3399999999995,
+        "cost2xKeepShare": 0.548630981647013
+      }
+    }
+  },
+  "versions": {
+    "tradeblocks": "4.6.2-local.2"
+  },
+  "ooRunIds": [],
+  "runFolder": null
+}

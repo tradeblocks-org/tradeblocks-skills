@@ -1,0 +1,28 @@
+{
+  "block_id": "triage-a2",
+  "runs": {
+    "author": "A2-author",
+    "naive": "A2-naive",
+    "cost_2x": "A2-cost2x"
+  },
+  "oo_settings": {
+    "useExactDte": true,
+    "entryDays": [
+      "Monday"
+    ],
+    "dte": 7,
+    "entryTime": "09:35",
+    "entryFilters": [
+      "synthetic coin-flip filter"
+    ]
+  },
+  "variants_tried": 1,
+  "costs": {
+    "slippage_per_side": 0.05,
+    "fee_per_contract": 0.5,
+    "note": "synthetic example values"
+  },
+  "expected_verdict": [
+    "reject"
+  ]
+}

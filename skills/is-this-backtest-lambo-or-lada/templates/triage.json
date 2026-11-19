@@ -1,0 +1,36 @@
+{
+  "block_id": "<TradeBlocks block id holding every run of this triage>",
+  "source": {
+    "ref": "<channel · title · date, or file name; remove the whole source object when there is none>",
+    "rule_sheet": {
+      "underlying": { "value": "SPX", "status": "stated" },
+      "structure": { "value": "<e.g. put credit spread>", "status": "stated" },
+      "legs": { "value": "<delta or offset, width>", "status": "stated" },
+      "dte": { "value": 0, "status": "stated" },
+      "entry_time": { "value": "<HH:mm>", "status": "stated" },
+      "stop": { "value": "<type, value, intra-minute or minute>", "status": "assumed" },
+      "exit": { "value": "<profit target or time exit>", "status": "stated" },
+      "entry_filters": { "value": "none", "status": "stated" },
+      "days_traded": { "value": "<weekdays>", "status": "stated" },
+      "reentry": { "value": "none", "status": "n/a" },
+      "sizing": { "value": "<fixed size>", "status": "stated" },
+      "fills": { "value": "<slippage assumption>", "status": "assumed" },
+      "date_range": { "value": "<author's record>", "status": "stated" }
+    }
+  },
+  "runs": {
+    "author": "<Strategy label of the author run in the block>",
+    "naive": "<label, or remove until the run exists>",
+    "cost_2x": "<label, or remove until the run exists>",
+    "minute_stop": "<label; only when the author run uses intra-minute stops>"
+  },
+  "oo_settings": {
+    "useExactDte": false,
+    "entryDays": ["Monday"],
+    "dte": 0,
+    "entryTime": "<HH:mm>",
+    "entryFilters": []
+  },
+  "variants_tried": 1,
+  "costs": { "slippage_per_side": 0, "fee_per_contract": 0, "note": "from the user's cost file" }
+}

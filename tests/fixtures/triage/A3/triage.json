@@ -1,0 +1,85 @@
+{
+  "block_id": "triage-a3",
+  "runs": {
+    "author": "A3-author",
+    "naive": "A3-naive",
+    "cost_2x": "A3-cost2x"
+  },
+  "oo_settings": {
+    "useExactDte": true,
+    "entryDays": [
+      "Monday"
+    ],
+    "dte": 7,
+    "entryTime": "09:35",
+    "entryFilters": [
+      "skip filter-off days"
+    ]
+  },
+  "variants_tried": 1,
+  "costs": {
+    "slippage_per_side": 0.05,
+    "fee_per_contract": 0.5,
+    "note": "synthetic example values"
+  },
+  "source": {
+    "ref": "Synthetic case A3",
+    "rule_sheet": {
+      "underlying": {
+        "value": "SPX",
+        "status": "stated"
+      },
+      "structure": {
+        "value": "put credit spread",
+        "status": "stated"
+      },
+      "legs": {
+        "value": "short 20 delta, 50 wide",
+        "status": "stated"
+      },
+      "dte": {
+        "value": 7,
+        "status": "stated"
+      },
+      "entry_time": {
+        "value": "09:35",
+        "status": "stated"
+      },
+      "stop": {
+        "value": "none",
+        "status": "stated"
+      },
+      "exit": {
+        "value": "hold to expiry",
+        "status": "stated"
+      },
+      "entry_filters": {
+        "value": "skip filter-off days",
+        "status": "stated"
+      },
+      "days_traded": {
+        "value": "Monday",
+        "status": "stated"
+      },
+      "reentry": {
+        "value": "none",
+        "status": "stated"
+      },
+      "sizing": {
+        "value": "1 lot",
+        "status": "stated"
+      },
+      "fills": {
+        "value": "OO default",
+        "status": "assumed"
+      },
+      "date_range": {
+        "value": "2022-06 to 2025-12",
+        "status": "stated"
+      }
+    }
+  },
+  "expected_verdict": [
+    "continue"
+  ]
+}

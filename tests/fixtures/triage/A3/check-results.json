@@ -1,0 +1,132 @@
+{
+  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2-local.2 (upstream 84358097 + PRs #639, #640, #641 and the capital-basis/top-days change) and read with the TB calls in SKILL.md. Regenerate after a threshold-relevant TB change.",
+  "case": "A3",
+  "runAt": "2026-11-19T00:00:00Z",
+  "source": {
+    "ref": "Synthetic case A3"
+  },
+  "ruleSheet": {
+    "underlying": {
+      "value": "SPX",
+      "status": "stated"
+    },
+    "structure": {
+      "value": "put credit spread",
+      "status": "stated"
+    },
+    "legs": {
+      "value": "short 20 delta, 50 wide",
+      "status": "stated"
+    },
+    "dte": {
+      "value": 7,
+      "status": "stated"
+    },
+    "entry_time": {
+      "value": "09:35",
+      "status": "stated"
+    },
+    "stop": {
+      "value": "none",
+      "status": "stated"
+    },
+    "exit": {
+      "value": "hold to expiry",
+      "status": "stated"
+    },
+    "entry_filters": {
+      "value": "skip filter-off days",
+      "status": "stated"
+    },
+    "days_traded": {
+      "value": "Monday",
+      "status": "stated"
+    },
+    "reentry": {
+      "value": "none",
+      "status": "stated"
+    },
+    "sizing": {
+      "value": "1 lot",
+      "status": "stated"
+    },
+    "fills": {
+      "value": "OO default",
+      "status": "assumed"
+    },
+    "date_range": {
+      "value": "2022-06 to 2025-12",
+      "status": "stated"
+    }
+  },
+  "runs": {
+    "author": "A3-author",
+    "naive": "A3-naive",
+    "cost_2x": "A3-cost2x"
+  },
+  "variantsTried": 1,
+  "authorUsesIntraMinuteStops": false,
+  "checks": {
+    "C2": {
+      "metrics": {
+        "trades": 127,
+        "months": 44
+      }
+    },
+    "C3": {
+      "metrics": {
+        "maxYearDteMismatchShare": 0,
+        "missingRuleDayShare": 0
+      }
+    },
+    "C4": {
+      "metrics": {
+        "point": 13.793620501635768,
+        "ciLow": 10.637598137041074,
+        "ciHigh": 16.977095756088715
+      }
+    },
+    "C5": {
+      "metrics": {
+        "plWithoutBest5": 6695.529999999998,
+        "best10Share": 0.2201462591610626,
+        "positiveYearShare": 1
+      }
+    },
+    "C6": {
+      "metrics": {
+        "stressPeriodsInRecord": 4,
+        "worstStressLossInAvgMonths": 0
+      },
+      "windows": [
+        {
+          "name": "bear_2022",
+          "netPl": 1307.3999999999996
+        },
+        {
+          "name": "svb_crisis",
+          "netPl": 135.81
+        },
+        {
+          "name": "vix_aug_2024",
+          "netPl": 0
+        },
+        {
+          "name": "liberation_day",
+          "netPl": 128.22
+        }
+      ]
+    },
+    "C7": {
+      "metrics": {
+        "cost2xPl": 6280.979999999998,
+        "cost2xKeepShare": 0.8318099107665494
+      }
+    }
+  },
+  "versions": {
+    "tradeblocks": "4.6.2-local.2"
+  },
+  "ooRunIds": [],
+  "runFolder": null
+}
