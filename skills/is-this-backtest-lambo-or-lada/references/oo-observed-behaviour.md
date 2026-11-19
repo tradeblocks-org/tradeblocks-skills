@@ -29,3 +29,11 @@ TradeBlocks has no per-day listing of available expiries, so it cannot say which
 ## Intra-minute stops
 
 The setting is `exitConditions[].useIntraMinuteStop` (one boolean per exit group). Option Omega honours it only for SPX and SPY and only while every leg of that exit group is 0 DTE. C8 applies when any group has it `true` and those conditions hold; the `minute_stop` run sets it `false` in every group.
+
+## Exit slippage and closing-order profit targets
+
+A profit target set as a closing order near zero (e.g. buy back at 0.05) interacts with `exitSlippage`: the target appears to fill only when the price **including** the exit slippage reaches it. With an exit slippage of 0.05 such a target never filled and the trades ran to expiry; with 0 it filled. Re-costing alone can therefore change which exits a strategy takes.
+
+Real case (0 DTE SPX iron condor, 15.5k trades): the author run (exit slippage 0.05) had Expired 10,737 / Profit Target 0 / Stop 4,805; the same run with only the five cost fields changed to a scenario with exit slippage 0 had Expired 86 / Profit Target 10,493 / Stop 4,963. Inferred from the exit-reason counts and the settings diff, not from Option Omega documentation.
+
+Consequence: author_base must trade like the author run. The verdict script compares their exit-reason shares and caps when the largest difference is above `thresholds.json` → `exitMix`; the cost file needs an explicit `exitSlippage` per scenario (never assumed 0).
