@@ -2,7 +2,7 @@
 
 The skill never runs Option Omega. `scripts/triage-run-request.mjs` writes the list for a plug-in or the user, who builds each run from the author run, exports it into the triage block with the given label, and adds the label to `triage.json`. At most four runs.
 
-Every run starts as a copy of the **author run** and changes only the fields listed. Everything else stays: underlying, structure, legs and strike rule, DTE and the exact-DTE setting, entry days, entry times, date range.
+Every run starts as a copy of the **author run** and changes only the fields listed. Everything else stays: underlying, structure, legs and strike rule, DTE and the exact-DTE setting, entry days, entry times, date range. The date range of every run goes into `triage.json` → `run_ranges`; C4 passes it to TradeBlocks as each run's coverage, so a day without a position counts as 0 $ only while that run was running.
 
 **Costs.** Every run a check reads is on the user's **base cost scenario**, read through the local config: `costs.file` = your filled copy of [templates/costs.json](../templates/costs.json), or `costs.command` printing the same JSON (`{ "scenarios": { "<name>": { "entrySlippage", "exitSlippage", "stopLossSlippage", "openingFees", "closingFees" } } }`, values in Option Omega's own units). No cost value is taken from the author's backtest or from this skill. Every field of the base (and the 2x) scenario must be a number; a missing, null, empty or non-numeric field stops the script before it writes anything, and nothing is filled with 0. An explicit 0 is kept and listed in `zeroCostFields`.
 

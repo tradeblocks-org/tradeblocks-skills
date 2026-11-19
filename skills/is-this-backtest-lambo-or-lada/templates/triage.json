@@ -37,6 +37,11 @@
     "rangeStart": "<yyyy-MM-dd of the author run>",
     "rangeEnd": "<yyyy-MM-dd of the author run>"
   },
+  "run_ranges": {
+    "author": { "from": "<OO rangeStart of the author run>", "through": "<OO rangeEnd>" },
+    "author_base": { "from": "<OO rangeStart of this run>", "through": "<OO rangeEnd>" },
+    "naive": { "from": "<OO rangeStart of this run>", "through": "<OO rangeEnd>" }
+  },
   "author_costs_match_base": false,
   "variants_tried": 1
 }

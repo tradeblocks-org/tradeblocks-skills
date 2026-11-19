@@ -300,6 +300,18 @@ export function evaluate(
       "runSizes (distinct contract counts per run label) is required",
     );
   }
+  const cov = results.c4Coverage;
+  if (
+    cov !== undefined &&
+    (cov === null ||
+      typeof cov !== "object" ||
+      !["caller", "heldWindow"].includes(cov.source))
+  ) {
+    fail(
+      "BAD_RESULTS",
+      'c4Coverage.source must be "caller" or "heldWindow" (from paired_bootstrap_comparison)',
+    );
+  }
   if (!Array.isArray(results.zeroCostFields)) {
     fail(
       "BAD_RESULTS",
@@ -509,6 +521,7 @@ export function evaluate(
     stoppedAt,
     costBasis,
     exitMix,
+    c4Coverage: results.c4Coverage ?? null,
     runSizes: results.runSizes,
     zeroCostFields: results.zeroCostFields,
     checks: rows,
@@ -561,6 +574,7 @@ export function logLine(report) {
     stoppedAt: report.stoppedAt,
     costBasis: report.costBasis,
     exitMix: report.exitMix,
+    c4Coverage: report.c4Coverage,
     runSizes: report.runSizes,
     zeroCostFields: report.zeroCostFields,
     variantsTried: report.variantsTried,
@@ -612,6 +626,20 @@ export function summary(report, thresholds) {
     );
   } else if (report.exitMix.status === "not_run") {
     lines.push(`Exit mix: ${report.exitMix.reason}; verdict capped.`);
+  }
+  const cov = report.c4Coverage;
+  if (cov?.source === "caller") {
+    const span = (r) => (r ? `${r.from} to ${r.through}` : "n/a");
+    lines.push(
+      `C4 coverage: each run's backtest range (checked run ${span(cov.A)}, naive ${span(cov.B)}); days without a position count as 0 only inside it.`,
+    );
+  } else if (cov?.source === "heldWindow") {
+    const t = cov.flatWindowTrimmed;
+    lines.push(
+      t?.trimmed
+        ? `C4 coverage: backtest ranges not known; flat days limited to the common traded window ${t.from} to ${t.through} (${t.droppedDays} edge days dropped).`
+        : "C4 coverage: backtest ranges not known; flat days limited to the common traded window (nothing dropped).",
+    );
   }
   lines.push("");
   for (const id of ORDER) {

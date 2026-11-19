@@ -131,6 +131,30 @@ export function ruleCalendarArgs(oo) {
   return { rule, ...(dateRange ? { dateRange } : {}) };
 }
 
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const isRange = (r) =>
+  r &&
+  DATE.test(r.from ?? "") &&
+  DATE.test(r.through ?? "") &&
+  r.from <= r.through;
+
+/**
+ * C4 coverage: each run's own backtest range (manifest run_ranges, from the
+ * Option Omega settings or the capture's daily log). A is the checked run
+ * (author_base when present), B the naive run. Without both ranges the
+ * coverage is omitted and TradeBlocks trims to the common traded window.
+ */
+export function c4CoverageArgs(manifest) {
+  const ranges = manifest.run_ranges ?? {};
+  const a = ranges[manifest.runs.author_base ? "author_base" : "author"];
+  const b = ranges.naive;
+  if (!isRange(a) || !isRange(b)) return undefined;
+  return {
+    A: { from: a.from, through: a.through },
+    B: { from: b.from, through: b.through },
+  };
+}
+
 /**
  * C6 metrics from per-window author results ({name, result: {trades, netPl}}
  * or result null when the call failed). A failed window makes C6 not run;
@@ -169,6 +193,7 @@ export async function collectCase(tb, manifest, thresholds) {
     });
   const quote = (v) => `'${String(v).replace(/'/g, "''")}'`;
   const checks = {};
+  let c4Coverage;
 
   // Contract counts per run label (fixed size on every run a check uses) and,
   // with author_base, the exit-reason mix of author and author_base.
@@ -256,12 +281,14 @@ export async function collectCase(tb, manifest, thresholds) {
 
   // C4
   if (naive) {
+    const coverage = c4CoverageArgs(manifest);
     const pb = await tb.call("paired_bootstrap_comparison", {
       blockId: block,
       strategyA: author,
       strategyB: naive,
       unobservedDays: "zero",
       grid: "xnys",
+      ...(coverage ? { coverage } : {}),
       seed: thresholds.bootstrap.seed,
       resamples: thresholds.bootstrap.resamples,
       ciLevel: thresholds.bootstrap.ciLevel,
@@ -269,6 +296,16 @@ export async function collectCase(tb, manifest, thresholds) {
     checks.C4 = {
       metrics: { point: pb.point, ciLow: pb.ci.low, ciHigh: pb.ci.high },
     };
+    if (pb.coverageSource) {
+      c4Coverage = {
+        source: pb.coverageSource,
+        ...(pb.coverage?.A ? { A: pb.coverage.A } : {}),
+        ...(pb.coverage?.B ? { B: pb.coverage.B } : {}),
+        ...(pb.flatWindowTrimmed
+          ? { flatWindowTrimmed: pb.flatWindowTrimmed }
+          : {}),
+      };
+    }
   }
 
   // C5
@@ -327,12 +364,12 @@ export async function collectCase(tb, manifest, thresholds) {
     };
   }
 
-  return { checks, runSizes, exitMix };
+  return { checks, runSizes, exitMix, c4Coverage };
 }
 
 /** check-results.json for one manifest, from the collected checks. */
 export function resultsFor(id, manifest, collected, tbVersion) {
-  const { checks, runSizes, exitMix } = collected;
+  const { checks, runSizes, exitMix, c4Coverage } = collected;
   const src = manifest.source;
   return {
     _source:
@@ -355,6 +392,7 @@ export function resultsFor(id, manifest, collected, tbVersion) {
     zeroCostFields: manifest.zero_cost_fields ?? [],
     runSizes,
     ...(exitMix ? { exitMix } : {}),
+    ...(c4Coverage ? { c4Coverage } : {}),
     variantsTried: manifest.variants_tried,
     authorUsesIntraMinuteStops: manifest.oo_settings.useIntraMinuteStop,
     authorCostsMatchBase: manifest.author_costs_match_base,

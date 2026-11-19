@@ -7,7 +7,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import * as verdict from "../scripts/triage-verdict.mjs";
-import { stressMetrics, ruleCalendarArgs } from "../scripts/triage-collect.mjs";
+import {
+  stressMetrics,
+  ruleCalendarArgs,
+  c4CoverageArgs,
+} from "../scripts/triage-collect.mjs";
 
 const { evaluate, logLine, run } = verdict;
 const summaryOf = (report) => verdict.summary(report, thresholds);
@@ -454,5 +458,95 @@ test("rev210 R6: an explicit zero slippage in the base scenario is named and cap
   assert.throws(
     () => evaluate(passing({ zeroCostFields: undefined }), thresholds),
     /^Error: BAD_RESULTS: zeroCostFields/,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// PRD rev 212 (round 11): C4 coverage from each run's backtest range
+// ---------------------------------------------------------------------------
+
+test("rev212: C4 coverage from the checked run's and the naive run's backtest ranges", () => {
+  const range = { from: "2022-06-01", through: "2026-11-06" };
+  const m = (runs, run_ranges) => ({ runs, run_ranges });
+  assert.deepEqual(
+    c4CoverageArgs(
+      m(
+        { author: "a", author_base: "ab", naive: "n" },
+        { author: range, author_base: range, naive: range },
+      ),
+    ),
+    { A: range, B: range },
+  );
+  // Without author_base the author run is the checked run.
+  assert.deepEqual(
+    c4CoverageArgs(
+      m({ author: "a", naive: "n" }, { author: range, naive: range }),
+    ),
+    { A: range, B: range },
+  );
+  // The checked run's own range is required; the author's does not stand in.
+  assert.equal(
+    c4CoverageArgs(
+      m(
+        { author: "a", author_base: "ab", naive: "n" },
+        { author: range, naive: range },
+      ),
+    ),
+    undefined,
+  );
+  assert.equal(
+    c4CoverageArgs(m({ author: "a", naive: "n" }, { author: range })),
+    undefined,
+  );
+  assert.equal(
+    c4CoverageArgs(m({ author: "a", naive: "n" }, undefined)),
+    undefined,
+  );
+  // A malformed range is never passed on.
+  assert.equal(
+    c4CoverageArgs(
+      m(
+        { author: "a", naive: "n" },
+        { author: { from: "2022-06-01" }, naive: range },
+      ),
+    ),
+    undefined,
+  );
+});
+
+test("rev212: caller coverage is named in the summary and logged", () => {
+  const c4Coverage = {
+    source: "caller",
+    A: { from: "2022-06-01", through: "2026-11-06" },
+    B: { from: "2022-06-01", through: "2026-11-06" },
+  };
+  const report = evaluate(passing({ c4Coverage }), thresholds);
+  assert.equal(report.verdict, "continue");
+  assert.deepEqual(report.c4Coverage, c4Coverage);
+  assert.match(summaryOf(report), /C4 coverage: each run's backtest range/);
+  assert.deepEqual(JSON.parse(logLine(report)).c4Coverage, c4Coverage);
+});
+
+test("rev212: without known ranges the trimmed flat window is shown, the verdict is unchanged", () => {
+  const c4Coverage = {
+    source: "heldWindow",
+    flatWindowTrimmed: {
+      trimmed: true,
+      from: "2022-07-05",
+      through: "2026-10-30",
+      droppedDays: 27,
+    },
+  };
+  const report = evaluate(passing({ c4Coverage }), thresholds);
+  assert.equal(report.verdict, "continue");
+  const text = summaryOf(report);
+  assert.match(text, /C4 coverage: backtest ranges not known/);
+  assert.match(text, /27 edge days/);
+});
+
+test("rev212: an unknown coverage source is refused", () => {
+  assert.throws(
+    () => evaluate(passing({ c4Coverage: { source: "guess" } }), thresholds),
+    /^Error: BAD_RESULTS: c4Coverage/,
   );
 });
