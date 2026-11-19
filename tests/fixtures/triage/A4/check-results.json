@@ -3,7 +3,8 @@
   "case": "A4",
   "runAt": "2026-11-19T00:00:00Z",
   "source": {
-    "ref": "Synthetic case A4"
+    "ref": "Synthetic case A4",
+    "description": "Synthetic source for case A4: sell a 7 DTE SPX put spread every Monday at 09:35, skip filter-off days, hold to expiry."
   },
   "ruleSheet": {
     "underlying": {
@@ -59,18 +60,25 @@
       "status": "stated"
     }
   },
+  "blockId": "triage-a4",
   "runs": {
     "author": "A4-author",
     "naive": "A4-naive",
     "cost_2x": "A4-cost2x"
   },
+  "costs": {
+    "scenario": "synthetic",
+    "note": "synthetic example; real triages take costs from the local config"
+  },
   "variantsTried": 1,
   "authorUsesIntraMinuteStops": false,
+  "authorCostsMatchBase": true,
   "checks": {
     "C2": {
       "metrics": {
         "trades": 127,
-        "months": 44
+        "months": 44,
+        "distinctContractCounts": 1
       }
     },
     "C3": {

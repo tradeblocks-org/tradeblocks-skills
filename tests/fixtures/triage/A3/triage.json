@@ -5,6 +5,60 @@
     "naive": "A3-naive",
     "cost_2x": "A3-cost2x"
   },
+  "rule_sheet": {
+    "underlying": {
+      "value": "SPX",
+      "status": "stated"
+    },
+    "structure": {
+      "value": "put credit spread",
+      "status": "stated"
+    },
+    "legs": {
+      "value": "short 20 delta, 50 wide",
+      "status": "stated"
+    },
+    "dte": {
+      "value": 7,
+      "status": "stated"
+    },
+    "entry_time": {
+      "value": "09:35",
+      "status": "stated"
+    },
+    "stop": {
+      "value": "none",
+      "status": "stated"
+    },
+    "exit": {
+      "value": "hold to expiry",
+      "status": "stated"
+    },
+    "entry_filters": {
+      "value": "skip filter-off days",
+      "status": "stated"
+    },
+    "days_traded": {
+      "value": "Monday",
+      "status": "stated"
+    },
+    "reentry": {
+      "value": "none",
+      "status": "stated"
+    },
+    "sizing": {
+      "value": "1 lot",
+      "status": "stated"
+    },
+    "fills": {
+      "value": "OO default",
+      "status": "assumed"
+    },
+    "date_range": {
+      "value": "2022-06 to 2025-12",
+      "status": "stated"
+    }
+  },
   "oo_settings": {
     "useExactDte": true,
     "entryDays": [
@@ -12,72 +66,33 @@
     ],
     "dte": 7,
     "entryTime": "09:35",
+    "additionalEntryTimes": [],
+    "useIntraMinuteStop": false,
     "entryFilters": [
       "skip filter-off days"
-    ]
+    ],
+    "rangeStart": "2022-06-06",
+    "rangeEnd": "2025-12-29"
   },
+  "author_costs_match_base": true,
   "variants_tried": 1,
   "costs": {
-    "slippage_per_side": 0.05,
-    "fee_per_contract": 0.5,
-    "note": "synthetic example values"
+    "scenario": "synthetic",
+    "note": "synthetic example; real triages take costs from the local config"
   },
   "source": {
     "ref": "Synthetic case A3",
-    "rule_sheet": {
-      "underlying": {
-        "value": "SPX",
-        "status": "stated"
-      },
-      "structure": {
-        "value": "put credit spread",
-        "status": "stated"
-      },
-      "legs": {
-        "value": "short 20 delta, 50 wide",
-        "status": "stated"
-      },
-      "dte": {
-        "value": 7,
-        "status": "stated"
-      },
-      "entry_time": {
-        "value": "09:35",
-        "status": "stated"
-      },
-      "stop": {
-        "value": "none",
-        "status": "stated"
-      },
-      "exit": {
-        "value": "hold to expiry",
-        "status": "stated"
-      },
-      "entry_filters": {
-        "value": "skip filter-off days",
-        "status": "stated"
-      },
-      "days_traded": {
-        "value": "Monday",
-        "status": "stated"
-      },
-      "reentry": {
-        "value": "none",
-        "status": "stated"
-      },
-      "sizing": {
-        "value": "1 lot",
-        "status": "stated"
-      },
-      "fills": {
-        "value": "OO default",
-        "status": "assumed"
-      },
-      "date_range": {
-        "value": "2022-06 to 2025-12",
-        "status": "stated"
-      }
-    }
+    "description": "Synthetic source for case A3: sell a 7 DTE SPX put spread every Monday at 09:35, skip filter-off days, hold to expiry."
+  },
+  "expected_checks": {
+    "C1": "pass",
+    "C2": "pass",
+    "C3": "pass",
+    "C4": "pass",
+    "C5": "pass",
+    "C6": "pass",
+    "C7": "pass",
+    "C8": "pass"
   },
   "expected_verdict": [
     "continue"

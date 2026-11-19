@@ -1,0 +1,14 @@
+{
+  "description": "Local config of is-this-backtest-lambo-or-lada. Keep it outside the skill; point TRIAGE_CONFIG at it. No value here ships with the skill.",
+  "costs": {
+    "file": "<path to a JSON cost file: { \"scenarios\": { \"<name>\": { \"entrySlippage\": 0, \"exitSlippage\": 0, \"stopLossSlippage\": 0, \"openingFees\": 0, \"closingFees\": 0 } } } in Option Omega units>",
+    "command": null,
+    "base": "<name of the base scenario>",
+    "cost2x": null
+  },
+  "thresholds": null,
+  "verdictLog": "<path of the append-only verdicts.jsonl>",
+  "runRoot": "<folder for one run folder per triage>",
+  "protocolHook": null,
+  "notes": "costs: give either file or command (argv array that prints the same JSON, e.g. a converter from your own cost file). cost2x: a named scenario, or null for base slippage x 2. thresholds: path of your copy of thresholds.json, or null for the default. protocolHook: argv array called with the run folder as last argument, or null."
+}

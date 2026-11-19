@@ -189,22 +189,52 @@ function ruleSheet(overrides = {}) {
   };
 }
 
+const NA = (value) => ({ value, status: "n/a" });
+/** Rule sheet from the settings alone (no source to compare): every field n/a. */
+function settingsSheet(range) {
+  return {
+    underlying: NA("SPX"),
+    structure: NA("put credit spread"),
+    legs: NA("short put, 50 wide"),
+    dte: NA(7),
+    entry_time: NA("09:35"),
+    stop: NA("none"),
+    exit: NA("hold to expiry"),
+    entry_filters: NA("none"),
+    days_traded: NA("Monday"),
+    reentry: NA("none"),
+    sizing: NA("1 lot"),
+    fills: NA("synthetic"),
+    date_range: NA(`${range[0]} to ${range[1]}`),
+  };
+}
+
+function ooSettings(range, extra = {}) {
+  return {
+    useExactDte: true,
+    entryDays: ["Monday"],
+    dte: 7,
+    entryTime: "09:35",
+    additionalEntryTimes: [],
+    useIntraMinuteStop: false,
+    entryFilters: [],
+    rangeStart: range[0],
+    rangeEnd: range[1],
+    ...extra,
+  };
+}
+
 function manifest(id, runs, extra = {}) {
   return {
     block_id: `triage-${id.toLowerCase()}`,
     runs,
-    oo_settings: {
-      useExactDte: true,
-      entryDays: ["Monday"],
-      dte: 7,
-      entryTime: "09:35",
-      entryFilters: [],
-    },
+    rule_sheet: settingsSheet(RANGE),
+    oo_settings: ooSettings(RANGE),
+    author_costs_match_base: true,
     variants_tried: 1,
     costs: {
-      slippage_per_side: 0.05,
-      fee_per_contract: 0.5,
-      note: "synthetic example values",
+      scenario: "synthetic",
+      note: "synthetic example; real triages take costs from the local config",
     },
     ...extra,
   };
@@ -255,6 +285,16 @@ export const CASES = {
         { author, naive: "A1-naive", cost_2x: "A1-cost2x" },
         {
           variants_tried: 35,
+          expected_checks: {
+            C1: "pass",
+            C2: "pass",
+            C3: "pass",
+            C4: "cap",
+            C5: "reject",
+            C6: "reject",
+            C7: "reject",
+            C8: "pass",
+          },
           grid: {
             delta: [10, 15, 20, 25, 30],
             stopPct: [100, 150, 200, 250, 300, 350, 400],
@@ -283,13 +323,11 @@ export const CASES = {
         "A2",
         { author: "A2-author", naive: "A2-naive", cost_2x: "A2-cost2x" },
         {
-          oo_settings: {
-            useExactDte: true,
-            entryDays: ["Monday"],
-            dte: 7,
-            entryTime: "09:35",
+          oo_settings: ooSettings(RANGE, {
             entryFilters: ["synthetic coin-flip filter"],
-          },
+          }),
+          // C4 decides; C5-C8 run after the failed gate and are not counted.
+          expected_checks: { C1: "pass", C2: "cap", C3: "pass", C4: "reject" },
         },
       ),
       expect: ["reject"],
@@ -298,7 +336,18 @@ export const CASES = {
 
   // Control: naive structure plus a filter that skips planted losing days.
   A3() {
-    return controlCase("A3", 303, {});
+    return controlCase("A3", 303, {
+      expectedChecks: {
+        C1: "pass",
+        C2: "pass",
+        C3: "pass",
+        C4: "pass",
+        C5: "pass",
+        C6: "pass",
+        C7: "pass",
+        C8: "pass",
+      },
+    });
   },
 
   // Mistranslation: A3 with the stop type changed and the stop marked assumed.
@@ -306,6 +355,19 @@ export const CASES = {
     return controlCase("A4", 303, {
       stopPct: 300,
       ruleSheet: { stop: ASSUMED("300 % of credit") },
+      expectedChecks: {
+        ...{
+          C1: "pass",
+          C2: "pass",
+          C3: "pass",
+          C4: "pass",
+          C5: "pass",
+          C6: "pass",
+          C7: "pass",
+          C8: "pass",
+        },
+        C1: "cap",
+      },
     });
   },
 
@@ -322,6 +384,8 @@ export const CASES = {
       expiry: firstAtLeast7,
       ruleSheet: { date_range: STATED("2016-01 to 2018-12") },
       exactDte: false,
+      // C3 decides and stops the triage at step 2; C4-C8 are logged, not counted.
+      expectedChecks: { C1: "pass", C2: "pass", C3: "cap" },
     });
   },
 };
@@ -335,6 +399,7 @@ function controlCase(
     expiry = exact7,
     ruleSheet: rs = {},
     exactDte = true,
+    expectedChecks,
   },
 ) {
   const rand = mulberry32(seed);
@@ -362,18 +427,19 @@ function controlCase(
       {
         source: {
           ref: `Synthetic case ${id}`,
-          rule_sheet: ruleSheet({
-            entry_filters: STATED("skip filter-off days"),
-            ...rs,
-          }),
+          description:
+            `Synthetic source for case ${id}: sell a 7 DTE SPX put spread every Monday ` +
+            "at 09:35, skip filter-off days, hold to expiry.",
         },
-        oo_settings: {
+        rule_sheet: ruleSheet({
+          entry_filters: STATED("skip filter-off days"),
+          ...rs,
+        }),
+        oo_settings: ooSettings(range, {
           useExactDte: exactDte,
-          entryDays: ["Monday"],
-          dte: 7,
-          entryTime: "09:35",
           entryFilters: ["skip filter-off days"],
-        },
+        }),
+        expected_checks: expectedChecks,
       },
     ),
     expect: id === "A3" ? ["continue"] : ["unclear"],
