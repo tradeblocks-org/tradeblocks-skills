@@ -316,9 +316,22 @@ export function runRequest(settings, scenarios, authorLabel, have = []) {
       (f) => `cost2x.${f}`,
     ),
   ];
+  // Each run keeps the author's Option Omega date range; C4 passes it to
+  // TradeBlocks as the run's coverage (manifest run_ranges). Unknown -> none.
+  const DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const runRanges =
+    DATE.test(p.rangeStart ?? "") && DATE.test(p.rangeEnd ?? "")
+      ? Object.fromEntries(
+          [...new Set(["author", ...have, ...runs.map((r) => r.role)])].map((role) => [
+            role,
+            { from: p.rangeStart, through: p.rangeEnd },
+          ]),
+        )
+      : {};
   return {
     flags,
     baseScenario: scenarios.baseName,
+    runRanges,
     zeroCostFields,
     // Identifies the exact cost values used, for the check results and the log.
     costsSha256: createHash("sha256")

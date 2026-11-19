@@ -57,6 +57,11 @@ function passing(overrides = {}) {
     authorCostsMatchBase: true,
     runSizes: { a: 1, n: 1, c: 1, ab: 1, m: 1 },
     zeroCostFields: [],
+    c4Coverage: {
+      source: "caller",
+      A: { from: "2020-01-01", through: "2023-12-31" },
+      B: { from: "2020-01-01", through: "2023-12-31" },
+    },
     checks: {
       C2: { metrics: { trades: 150, months: 40, distinctContractCounts: 1 } },
       C3: { metrics: { maxYearDteMismatchShare: 0, missingRuleDayShare: 0 } },
@@ -527,7 +532,7 @@ test("rev212: caller coverage is named in the summary and logged", () => {
   assert.deepEqual(JSON.parse(logLine(report)).c4Coverage, c4Coverage);
 });
 
-test("rev212: without known ranges the trimmed flat window is shown, the verdict is unchanged", () => {
+test("rev212/214: without known ranges the trimmed flat window is shown and caps C4", () => {
   const c4Coverage = {
     source: "heldWindow",
     flatWindowTrimmed: {
@@ -538,7 +543,8 @@ test("rev212: without known ranges the trimmed flat window is shown, the verdict
     },
   };
   const report = evaluate(passing({ c4Coverage }), thresholds);
-  assert.equal(report.verdict, "continue");
+  assert.equal(report.verdict, "unclear");
+  assert.equal(report.checks.C4.outcome, "cap");
   const text = summaryOf(report);
   assert.match(text, /C4 coverage: backtest ranges not known/);
   assert.match(text, /27 edge days/);
@@ -549,4 +555,78 @@ test("rev212: an unknown coverage source is refused", () => {
     () => evaluate(passing({ c4Coverage: { source: "guess" } }), thresholds),
     /^Error: BAD_RESULTS: c4Coverage/,
   );
+});
+
+// ---------------------------------------------------------------------------
+// PRD rev 214 (round 12, review v3)
+// ---------------------------------------------------------------------------
+
+test("rev214 MQ2: no coverage caps C4, so a reject cannot stand on a trimmed window", () => {
+  const neg = { C4: { metrics: { point: -5, ciLow: -9, ciHigh: -1 } } };
+  for (const c4Coverage of [
+    {
+      source: "heldWindow",
+      flatWindowTrimmed: { trimmed: true, from: "2021-01-04", through: "2023-12-29", droppedDays: 300 },
+    },
+    {
+      source: "heldWindow",
+      flatWindowTrimmed: { trimmed: false, from: "2020-01-02", through: "2023-12-29", droppedDays: 0 },
+    },
+  ]) {
+    const r = passing({ c4Coverage });
+    r.checks = { ...r.checks, ...neg };
+    const report = evaluate(r, thresholds);
+    assert.equal(report.checks.C4.status, "run");
+    assert.equal(report.checks.C4.outcome, "cap");
+    assert.match(report.checks.C4.reason, /no coverage/);
+    assert.equal(report.verdict, "unclear");
+  }
+});
+
+test("rev214 MQ2: C4 coverage not recorded caps C4", () => {
+  const r = passing();
+  delete r.c4Coverage;
+  const report = evaluate(r, thresholds);
+  assert.equal(report.checks.C4.outcome, "cap");
+  assert.match(report.checks.C4.reason, /coverage not recorded/);
+  assert.equal(report.verdict, "unclear");
+});
+
+test("rev214 MQ3: a changed exit mix makes C4-C8 not run, never a reject", () => {
+  const r = based({
+    exitMix: {
+      author: { Expired: 10737, "Stop Loss": 4805 },
+      authorBase: { Expired: 86, "Profit Target": 10493, "Stop Loss": 4963 },
+    },
+  });
+  r.checks = { ...r.checks, C4: { metrics: { point: -5, ciLow: -9, ciHigh: -1 } } };
+  const report = evaluate(r, thresholds);
+  for (const id of ["C4", "C5", "C6", "C7"]) {
+    assert.equal(report.checks[id].status, "not_run", id);
+    assert.match(report.checks[id].reason, /exit mix/);
+  }
+  assert.equal(report.checks.C2.status, "run");
+  assert.equal(report.verdict, "unclear");
+});
+
+test("rev214 fix 2: author_base together with authorCostsMatchBase true is refused", () => {
+  assert.throws(
+    () =>
+      evaluate(
+        passing({ runs: { author: "a", author_base: "ab", naive: "n", cost_2x: "c" } }),
+        thresholds,
+      ),
+    /^Error: BAD_RESULTS: author_base/,
+  );
+});
+
+test("rev214 B2: the frozen cases A1-A5 carry each run's range and were collected with coverage", () => {
+  for (const id of ["A1", "A2", "A3", "A4", "A5"]) {
+    const m = JSON.parse(readFileSync(join(fixtures, id, "triage.json"), "utf8"));
+    for (const role of Object.keys(m.runs)) {
+      assert.ok(m.run_ranges?.[role]?.from && m.run_ranges[role].through, `${id} ${role}`);
+    }
+    const r = JSON.parse(readFileSync(join(fixtures, id, "check-results.json"), "utf8"));
+    if (r.checks.C4?.metrics) assert.equal(r.c4Coverage?.source, "caller", id);
+  }
 });

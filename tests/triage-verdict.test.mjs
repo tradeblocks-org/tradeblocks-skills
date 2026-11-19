@@ -53,6 +53,11 @@ function passing(overrides = {}) {
     authorCostsMatchBase: true,
     runSizes: { "S-author": 1, "S-naive": 1, "S-cost2x": 1, "S-minute": 1 },
     zeroCostFields: [],
+    c4Coverage: {
+      source: "caller",
+      A: { from: "2020-01-01", through: "2023-12-31" },
+      B: { from: "2020-01-01", through: "2023-12-31" },
+    },
     checks: {
       C2: { metrics: { trades: 150, months: 40, distinctContractCounts: 1 } },
       C3: { metrics: { maxYearDteMismatchShare: 0, missingRuleDayShare: 0 } },

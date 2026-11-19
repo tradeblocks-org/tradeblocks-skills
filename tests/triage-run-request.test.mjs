@@ -347,3 +347,23 @@ test("rev210 R6: the shipped cost template has every required field and no value
     }
   }
 });
+
+test("rev214: run ranges for the manifest come from the author's OO settings (every run keeps them)", () => {
+  const { configPath } = setup();
+  const sc = loadScenarios(readConfig(configPath));
+  const s = settings();
+  const p = s.parameters ?? s;
+  p.rangeStart = "2022-06-01";
+  p.rangeEnd = "2026-11-06";
+  const out = runRequest(s, sc, "X");
+  const range = { from: "2022-06-01", through: "2026-11-06" };
+  assert.deepEqual(out.runRanges, {
+    author: range,
+    author_base: range,
+    naive: range,
+    cost_2x: range,
+    minute_stop: range,
+  });
+  delete p.rangeEnd;
+  assert.deepEqual(runRequest(s, sc, "X").runRanges, {});
+});

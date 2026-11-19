@@ -46,6 +46,7 @@ The author's rules at base costs with `exitConditions[].useIntraMinuteStop` set 
   "flags": { "author_costs_match_base": false, "author_uses_intra_minute_stops": true },
   "baseScenario": "<name>",
   "zeroCostFields": [ "base.<field>", "cost2x.<field>" ],
+  "runRanges": { "author": { "from": "<rangeStart>", "through": "<rangeEnd>" }, "naive": { ... }, ... },
   "costsSha256": "<sha256 of the base and 2x cost values used>",
   "runs": [
     { "role": "author_base", "label": "<author> base-costs", "from": "author", "set": { <cost fields> } },
@@ -59,4 +60,4 @@ The author's rules at base costs with `exitConditions[].useIntraMinuteStop` set 
 }
 ```
 
-`set` overwrites top-level settings fields; `exitConditions[i]` overwrites fields of the author's i-th exit group. Only fields that change are listed. Copy both flags into `triage.json` (`author_costs_match_base`, `oo_settings.useIntraMinuteStop`) and `costsSha256` and `zeroCostFields` into the check results. `zeroCostFields` names every cost field that is an explicit 0 (`[]` when none); a base slippage of 0 caps C7.
+`set` overwrites top-level settings fields; `exitConditions[i]` overwrites fields of the author's i-th exit group. Only fields that change are listed. Copy both flags into `triage.json` (`author_costs_match_base`, `oo_settings.useIntraMinuteStop`), `runRanges` into `run_ranges` (empty when the author settings have no range: C4 then caps) and `costsSha256` and `zeroCostFields` into the check results. `zeroCostFields` names every cost field that is an explicit 0 (`[]` when none); a base slippage of 0 caps C7.

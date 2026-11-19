@@ -225,7 +225,7 @@ function ooSettings(range, extra = {}) {
 }
 
 function manifest(id, runs, extra = {}) {
-  return {
+  const m = {
     block_id: `triage-${id.toLowerCase()}`,
     runs,
     rule_sheet: settingsSheet(RANGE),
@@ -234,6 +234,11 @@ function manifest(id, runs, extra = {}) {
     variants_tried: 1,
     ...extra,
   };
+  // Every run of a case is built on the author's Option Omega date range; C4
+  // passes these ranges to TradeBlocks as each run's coverage.
+  const range = { from: m.oo_settings.rangeStart, through: m.oo_settings.rangeEnd };
+  m.run_ranges = Object.fromEntries(Object.keys(runs).map((role) => [role, range]));
+  return m;
 }
 
 const RANGE = ["2022-06-06", "2025-12-29"];

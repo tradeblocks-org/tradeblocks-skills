@@ -85,6 +85,20 @@
     "C2": "pass",
     "C3": "cap"
   },
+  "run_ranges": {
+    "author": {
+      "from": "2016-01-04",
+      "through": "2018-12-31"
+    },
+    "naive": {
+      "from": "2016-01-04",
+      "through": "2018-12-31"
+    },
+    "cost_2x": {
+      "from": "2016-01-04",
+      "through": "2018-12-31"
+    }
+  },
   "expected_verdict": [
     "unclear"
   ]

@@ -329,6 +329,15 @@ export function evaluate(
     );
   }
 
+  // The collector reads author_base whenever the manifest names it; a flag that
+  // says the author is on base costs would make this script read the author.
+  if (results.authorCostsMatchBase && runs.author_base) {
+    fail(
+      "BAD_RESULTS",
+      "author_base is given although authorCostsMatchBase is true; drop one (the checks would read different runs)",
+    );
+  }
+
   // R6: every check reads the run on the user's base costs. author_base replaces
   // the author run when the author's own costs differ from the base scenario.
   const costBasis = results.authorCostsMatchBase
@@ -340,6 +349,21 @@ export function evaluate(
           checkedRun: runs.author,
           reason:
             "author run is not on the base cost scenario and the author_base run is missing",
+        };
+
+  // author_base must trade like the author run: re-costing must not change the
+  // exit-reason mix (e.g. a closing-order target that fills only at 0 slippage).
+  const exitMix = !runs.author_base
+    ? { status: "n/a" }
+    : results.exitMix?.author && results.exitMix?.authorBase
+      ? compareExitMix(
+          results.exitMix.author,
+          results.exitMix.authorBase,
+          thresholds.exitMix,
+        )
+      : {
+          status: "not_run",
+          reason: "exit-reason counts of author and author_base not read",
         };
 
   const rows = {};
@@ -355,6 +379,11 @@ export function evaluate(
     const otherSize = otherLabel ? results.runSizes[otherLabel] : undefined;
     if (costDependent && costBasis.status !== "base") {
       row = notRun("author_base run missing (author off base costs)");
+    } else if (costDependent && exitMix.status === "changed") {
+      // author_base is a different strategy, not the author's on other costs.
+      row = notRun(
+        "exit mix changed by re-costing (author_base does not trade like the author run)",
+      );
     } else if (otherLabel && otherSize === undefined) {
       row = notRun(`contract counts of the ${otherRole} run not read`);
     } else if (otherLabel && otherSize !== 1) {
@@ -421,6 +450,22 @@ export function evaluate(
         if (SEVERITY[row.outcome] < SEVERITY.cap) row.outcome = "cap";
       }
     }
+    // Coverage: without each run's backtest range TradeBlocks trims the flat
+    // days to the common traded window, which is biased toward reject.
+    if (id === "C4" && row.status === "run") {
+      const cov = results.c4Coverage;
+      const why =
+        cov === undefined
+          ? "C4 coverage not recorded"
+          : cov.source !== "caller"
+            ? "no coverage (backtest ranges unknown): flat days limited to the common traded window"
+            : null;
+      if (why) {
+        // At most cap: a reject cannot stand on a trimmed window either.
+        row.outcome = "cap";
+        row.reason = row.reason ? `${row.reason}; ${why}` : why;
+      }
+    }
     // R6: an explicit 0 slippage in the base scenario makes C7 meaningless.
     const zeroSlip = results.zeroCostFields.filter((f) =>
       /^base\..*Slippage$/.test(f),
@@ -432,21 +477,6 @@ export function evaluate(
     row.name = def.name;
     rows[id] = row;
   }
-
-  // author_base must trade like the author run: re-costing must not change the
-  // exit-reason mix (e.g. a closing-order target that fills only at 0 slippage).
-  const exitMix = !runs.author_base
-    ? { status: "n/a" }
-    : results.exitMix?.author && results.exitMix?.authorBase
-      ? compareExitMix(
-          results.exitMix.author,
-          results.exitMix.authorBase,
-          thresholds.exitMix,
-        )
-      : {
-          status: "not_run",
-          reason: "exit-reason counts of author and author_base not read",
-        };
 
   // Step 2: a C3 cap means the backtest is not the strategy. The triage stops
   // with unclear; later checks are logged, not counted, and never reject (Q6).
@@ -622,7 +652,7 @@ export function summary(report, thresholds) {
   }
   if (report.exitMix.status === "changed") {
     lines.push(
-      `Exit mix: re-costing changed the trade path (largest exit-reason share difference ${(report.exitMix.maxShareDiff * 100).toFixed(1)} %); verdict capped.`,
+      `Exit mix: re-costing changed the trade path (largest exit-reason share difference ${(report.exitMix.maxShareDiff * 100).toFixed(1)} %); author_base is a different strategy, C4-C8 not run.`,
     );
   } else if (report.exitMix.status === "not_run") {
     lines.push(`Exit mix: ${report.exitMix.reason}; verdict capped.`);

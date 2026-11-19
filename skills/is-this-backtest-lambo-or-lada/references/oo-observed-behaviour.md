@@ -32,10 +32,10 @@ The setting is `exitConditions[].useIntraMinuteStop` (one boolean per exit group
 
 ## Exit slippage and closing-order profit targets
 
-A profit target set as a closing order near zero (e.g. buy back at 0.05) interacts with `exitSlippage`: the target appears to fill only when the price **including** the exit slippage reaches it. With an exit slippage of 0.05 such a target never filled and the trades ran to expiry; with 0 it filled. Re-costing alone can therefore change which exits a strategy takes.
+A profit target set as a closing order near zero (e.g. buy back at 0.05) interacts with `exitSlippage`: the target appears to fill only when the price **including** the exit slippage reaches it. With a non-zero exit slippage of the size of the target such a target never filled and the trades ran to expiry; with 0 it filled. Re-costing alone can therefore change which exits a strategy takes.
 
-Real case (0 DTE SPX iron condor, 15.5k trades): the author run (exit slippage 0.05) had Expired 10,737 / Profit Target 0 / Stop 4,805; the same run with only the five cost fields changed to a scenario with exit slippage 0 had Expired 86 / Profit Target 10,493 / Stop 4,963. Inferred from the exit-reason counts and the settings diff, not from Option Omega documentation. Re-run with exit slippage 0.05 in both: Profit Target 0 again (author_base Expired 10,443 / Stop 5,099).
+Example (one real 0 DTE SPX case, re-costed with only the cost fields changed): closing-order profit-target exits fell from over 10,000 to 0 when the exit slippage went from 0 to the author's value; the trades expired instead. Inferred from the exit-reason counts and the settings diff, not from Option Omega documentation.
 
-**Expiry pays no exit slippage (observed).** The naive run (no profit target, no stop, every trade held to expiry) built once with exit slippage 0 and once with 0.05, all else equal: same 15,542 trades, all Expired, same net P/L to the cent. A run whose trades all expire does not depend on `exitSlippage`.
+**Expiry pays no exit slippage (observed).** In the same case the naive run (no profit target, no stop, every trade held to expiry) was built with two different exit slippages, all else equal: the trade logs were byte-identical. A run whose trades all expire does not depend on `exitSlippage`.
 
-Consequence: author_base must trade like the author run. The verdict script compares their exit-reason shares and caps when the largest difference is above `thresholds.json` → `exitMix`; the cost file needs an explicit `exitSlippage` per scenario (never assumed 0).
+Consequence: author_base must trade like the author run. The verdict script compares their exit-reason shares; above `thresholds.json` → `exitMix` author_base counts as a different strategy and C4–C8 are not run. The cost file needs an explicit `exitSlippage` per scenario (never assumed 0).

@@ -74,7 +74,7 @@
     "query": "All runs are in the block. In the author run almost every trade expired, in author_base most trades hit the profit target instead. The rest looks great, can I call it continue?",
     "expected_behavior": [
       "Reads the exit-reason counts of the author run and author_base with run_sql and puts them into check-results.json as exitMix",
-      "Reports that re-costing changed the exit mix, so author_base does not trade like the author run, and that the verdict is at most unclear",
+      "Reports that re-costing changed the exit mix, so author_base is a different strategy: C4-C8 are not run and the verdict is at most unclear, never continue or reject",
       "Does not drop the exit-mix guard, change its threshold or explain the difference away; names the cost field to check (exit slippage) and a rerun"
     ]
   }
