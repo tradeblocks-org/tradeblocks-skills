@@ -193,6 +193,8 @@ export function evaluate(results, thresholds, { thresholdsSha256 = null } = {}) 
     runAt: results.runAt ?? null,
     source: results.source ?? null,
     runs,
+    blockId: results.blockId ?? null,
+    costs: results.costs ?? null,
     ruleSheet: results.ruleSheet ?? null,
     variantsTried: results.variantsTried ?? null,
     verdict,
@@ -230,6 +232,7 @@ export function logLine(report) {
     runAt: report.runAt,
     case: report.case,
     source: report.source,
+    inputs: { blockId: report.blockId, runs: report.runs, costs: report.costs },
     ruleSheet: report.ruleSheet,
     confidence: report.checks.C1.metrics?.confidence ?? null,
     checks,
@@ -280,7 +283,11 @@ export function summary(report, thresholds) {
   }
   if (report.ruleSheet) {
     lines.push("");
-    lines.push("Rule sheet (assumed fields marked *):");
+    lines.push(
+      report.source
+        ? "Rule sheet (assumed fields marked *):"
+        : "Rule sheet (from the author run's settings; no source to compare):",
+    );
     for (const [field, entry] of Object.entries(report.ruleSheet)) {
       lines.push(`  ${entry.status === "assumed" ? "*" : " "} ${field}: ${entry.value}`);
     }

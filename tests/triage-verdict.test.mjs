@@ -256,6 +256,18 @@ test("log line carries inputs, checks, versions and the thresholds hash", () => 
   assert.ok(!logLine(report).includes("\n"));
 });
 
+test("log line carries the inputs; rule sheet is shown without a source too", () => {
+  const sheet = { underlying: { value: "SPX", status: "n/a" }, dte: { value: 0, status: "n/a" } };
+  const r = passing({ blockId: "b1", costs: { slippage_per_side: 0.05 }, ruleSheet: sheet });
+  const report = evaluate(r, thresholds);
+  const line = JSON.parse(logLine(report));
+  assert.deepEqual(line.inputs, { blockId: "b1", runs: r.runs, costs: { slippage_per_side: 0.05 } });
+  const text = summary(report, thresholds);
+  assert.match(text, /Rule sheet \(from the author run's settings; no source to compare\):/);
+  assert.match(text, /underlying: SPX/);
+  assert.equal(report.checks.C1.status, "skipped");
+});
+
 test("CLI appends one log line per run and writes the summary", () => {
   const dir = mkdtempSync(join(tmpdir(), "triage-"));
   const results = join(dir, "results.json");

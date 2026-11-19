@@ -40,7 +40,7 @@ Check that the server offers the tools and options in `thresholds.json` → `req
 
 ### 2. Rule sheet and data check
 
-**Rule sheet (R1).** Read the author run's Option Omega settings (saved backtest, or `oo_settings` in the manifest) and list every rule field with its value: core fields `underlying, structure, legs, dte, entry_time, stop, exit`, secondary fields `entry_filters, days_traded, reentry, sizing, fills, date_range`. If a source description is supplied, mark each field `stated` (the source says it; note the timestamp or quote) or `assumed` (filled from a default or by you); `n/a` when it does not apply. Without a source, C1 is skipped and the summary says fidelity was not checked.
+**Rule sheet (R1).** Read the author run's Option Omega settings (saved backtest, or `oo_settings` in the manifest) and list every rule field with its value: core fields `underlying, structure, legs, dte, entry_time, stop, exit`, secondary fields `entry_filters, days_traded, reentry, sizing, fills, date_range`. If a source description is supplied, mark each field `stated` (the source says it; note the timestamp or quote) or `assumed` (filled from a default or by you); `n/a` when it does not apply. Without a source, still write the rule sheet (status `n/a` for every field); C1 is skipped and the summary says fidelity was not checked.
 
 **C2 sample.** `get_statistics` (strategy = author, `riskFreeRateAnnualPct: 0`) → `trades = stats.totalTrades`. `get_period_returns` (author, `period: "monthly"`) → `months` = calendar months from the first to the last period, inclusive.
 
@@ -75,7 +75,7 @@ Run every check even after one fails, so the log holds complete rows (N50).
 
 ### 7. Verdict
 
-Write `check-results.json` in the run folder: `case`, `runAt` (ISO time of this run), `source` (`{ref}` or null), `ruleSheet`, `runs`, `variantsTried` (from the manifest; logged only in V1), `authorUsesIntraMinuteStops`, `checks` (`{ "C2": { "metrics": {...} }, ... }`; a check that could not run: `{ "notRun": "<reason>" }`; one metric that could not be read: `null` plus `"notRunReason"`), `versions` (`tradeblocks`, `optionomega` when known), `ooRunIds`, `runFolder`. Then:
+Write `check-results.json` in the run folder: `case`, `runAt` (ISO time of this run), `source` (`{ref}` or null), `ruleSheet` (always), `blockId`, `runs`, `costs` (from the manifest), `variantsTried` (from the manifest; logged only in V1), `authorUsesIntraMinuteStops`, `checks` (`{ "C2": { "metrics": {...} }, ... }`; a check that could not run: `{ "notRun": "<reason>" }`; one metric that could not be read: `null` plus `"notRunReason"`), `versions` (`tradeblocks`, `optionomega` when known), `ooRunIds`, `runFolder`. Then:
 
 ```
 node "${CLAUDE_SKILL_DIR}/../../scripts/triage-verdict.mjs" \

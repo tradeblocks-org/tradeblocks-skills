@@ -15,6 +15,7 @@ The author run minus every optional lever, exiting at the structure's natural en
 | Time exits | off: `useTimeActions` false, `exitAtDte` / `exitAtDit` / `exitAtMit` removed |
 | Entry filters | off: every `entryMin*` / `*Max*` filter removed, `useOpeningRangeBreakout` false |
 | Re-entry | off: `reentryConditions` removed |
+| Sizing rules | off: one fixed contract count per entry (`maxContractsPerTrade` = the author run's per-trade size), no allocation-based sizing |
 | Exit | hold to the natural end: expiry of the short leg; for a calendar, the front leg's expiry |
 
 Costs stay at the base scenario (`entrySlippage`, `exitSlippage`, `stopLossSlippage`, `openingFees`, `closingFees` as in the author run).

@@ -1,7 +1,8 @@
 {
   "block_id": "<TradeBlocks block id holding every run of this triage>",
   "source": {
-    "ref": "<channel · title · date, or file name; remove the whole source object when there is none>",
+    "description": "<the source text or transcript excerpt the rule sheet is checked against; remove the whole source object when there is none>",
+    "ref": "<channel · title · date, or file name>",
     "rule_sheet": {
       "underlying": { "value": "SPX", "status": "stated" },
       "structure": { "value": "<e.g. put credit spread>", "status": "stated" },
