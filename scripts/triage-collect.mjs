@@ -170,6 +170,34 @@ export async function collectCase(tb, manifest, thresholds) {
   const quote = (v) => `'${String(v).replace(/'/g, "''")}'`;
   const checks = {};
 
+  // Contract counts per run label (fixed size on every run a check uses) and,
+  // with author_base, the exit-reason mix of author and author_base.
+  const perRun = await tb.call("run_sql", {
+    query:
+      "SELECT strategy, COUNT(DISTINCT num_contracts) AS n FROM trades.trade_data " +
+      `WHERE block_id = ${quote(block)} GROUP BY strategy`,
+  });
+  const runSizes = Object.fromEntries(
+    (perRun.rows ?? perRun).map((r) => [r.strategy, Number(r.n)]),
+  );
+  let exitMix;
+  if (manifest.runs.author_base) {
+    const reasons = async (label) => {
+      const res = await tb.call("run_sql", {
+        query:
+          "SELECT reason_for_close AS reason, COUNT(*) AS n FROM trades.trade_data " +
+          `WHERE block_id = ${quote(block)} AND strategy = ${quote(label)} GROUP BY reason_for_close`,
+      });
+      return Object.fromEntries(
+        (res.rows ?? res).map((r) => [r.reason ?? "unknown", Number(r.n)]),
+      );
+    };
+    exitMix = {
+      author: await reasons(manifest.runs.author),
+      authorBase: await reasons(manifest.runs.author_base),
+    };
+  }
+
   // C2: sample and fixed size
   const authorStats = await stats(author, { topDays: [1, 5, 10] });
   const monthly = await tb.call("get_period_returns", {
@@ -299,11 +327,12 @@ export async function collectCase(tb, manifest, thresholds) {
     };
   }
 
-  return checks;
+  return { checks, runSizes, exitMix };
 }
 
 /** check-results.json for one manifest, from the collected checks. */
-export function resultsFor(id, manifest, checks, tbVersion) {
+export function resultsFor(id, manifest, collected, tbVersion) {
+  const { checks, runSizes, exitMix } = collected;
   const src = manifest.source;
   return {
     _source:
@@ -322,7 +351,10 @@ export function resultsFor(id, manifest, checks, tbVersion) {
     runs: manifest.runs,
     // Cost scenario names come from the local config, never from the manifest.
     costs: null,
-    costsSha256: null,
+    costsSha256: manifest.costs_sha256 ?? null,
+    zeroCostFields: manifest.zero_cost_fields ?? [],
+    runSizes,
+    ...(exitMix ? { exitMix } : {}),
     variantsTried: manifest.variants_tried,
     authorUsesIntraMinuteStops: manifest.oo_settings.useIntraMinuteStop,
     authorCostsMatchBase: manifest.author_costs_match_base,
@@ -377,8 +409,8 @@ async function main(argv) {
         blockName: manifest.block_id,
       });
     }
-    const checks = await collectCase(tb, manifest, thresholds);
-    const results = resultsFor(id, manifest, checks, tbVersion);
+    const collected = await collectCase(tb, manifest, thresholds);
+    const results = resultsFor(id, manifest, collected, tbVersion);
     writeFileSync(
       join(fixtures, id, "check-results.json"),
       JSON.stringify(results, null, 2) + "\n",

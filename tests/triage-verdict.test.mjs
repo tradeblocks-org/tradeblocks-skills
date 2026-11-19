@@ -51,6 +51,8 @@ function passing(overrides = {}) {
     runs: { author: "S-author", naive: "S-naive", cost_2x: "S-cost2x" },
     authorUsesIntraMinuteStops: false,
     authorCostsMatchBase: true,
+    runSizes: { "S-author": 1, "S-naive": 1, "S-cost2x": 1, "S-minute": 1 },
+    zeroCostFields: [],
     checks: {
       C2: { metrics: { trades: 150, months: 40, distinctContractCounts: 1 } },
       C3: { metrics: { maxYearDteMismatchShare: 0, missingRuleDayShare: 0 } },
@@ -251,6 +253,7 @@ test("C8 runs with a minute_stop run and can reject", () => {
   const r = passing({
     authorUsesIntraMinuteStops: true,
     runs: { author: "a", naive: "n", cost_2x: "c", minute_stop: "m" },
+    runSizes: { a: 1, n: 1, c: 1, m: 1 },
   });
   r.checks.C8 = { metrics: { minuteStopPl: -10, minuteStopDropShare: 1.2 } };
   assert.equal(evaluate(r, thresholds).verdict, "reject");

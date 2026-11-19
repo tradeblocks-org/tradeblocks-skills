@@ -241,5 +241,16 @@
       "changed": "2026-11-19",
       "reason": "draft value from the requirements, checked on synthetic A1-A5, not tuned"
     }
+  },
+  "exitMix": {
+    "name": "author_base trades like the author run",
+    "metric": "maxShareDiff",
+    "op": ">",
+    "value": 0.1,
+    "outcome": "cap",
+    "unit": "share",
+    "description": "Largest difference in exit-reason share (profit target, stop, expiry, time, other) between the author run and author_base. Above the value the re-costing changed the strategy (e.g. a closing-order target that fills only at 0 exit slippage): flag and cap.",
+    "changed": "2026-11-19",
+    "reason": "draft value, decided after review v2; checked on the real e2e case, not tuned"
   }
 }

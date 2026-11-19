@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -311,4 +311,39 @@ test("v2 fix 4: the request carries the sha256 of the cost scenarios it used", (
     "X",
   );
   assert.equal(out.costsSha256, again.costsSha256);
+});
+
+test("rev210 R6: missing, null, empty or non-numeric cost fields are refused, never 0", () => {
+  for (const bad of [undefined, null, "", "0.1", Number.NaN]) {
+    const { dir } = setup();
+    const scen = structuredClone(COSTS);
+    if (bad === undefined) delete scen.scenarios.base.exitSlippage;
+    else scen.scenarios.base.exitSlippage = bad;
+    const f = join(dir, "c.json");
+    writeFileSync(f, JSON.stringify(scen));
+    const cfg = join(dir, "cfg.json");
+    writeFileSync(cfg, JSON.stringify({ costs: { file: f, base: "base" } }));
+    assert.throws(() => loadScenarios(readConfig(cfg)), /^Error: BAD_COSTS: scenario base: exitSlippage/, String(bad));
+  }
+});
+
+test("rev210 R6: explicit zeros are named; author settings without a cost field never match the base", () => {
+  const { configPath } = setup();
+  const sc = loadScenarios(readConfig(configPath));
+  const out = runRequest(settings(), sc, "X");
+  // COSTS.scenarios.base has exitSlippage 0 (explicit): named, also in the 2x scenario.
+  assert.deepEqual(out.zeroCostFields, ["base.exitSlippage", "cost2x.exitSlippage"]);
+  const p = settings({ ...COSTS.scenarios.base }).parameters;
+  delete p.closingFees;
+  assert.equal(runRequest({ parameters: p }, sc, "X").flags.author_costs_match_base, false);
+});
+
+test("rev210 R6: the shipped cost template has every required field and no values", () => {
+  const t = JSON.parse(readFileSync(join(here, "..", "skills", "is-this-backtest-lambo-or-lada", "templates", "costs.json"), "utf8"));
+  for (const s of Object.values(t.scenarios)) {
+    for (const f of ["entrySlippage", "exitSlippage", "stopLossSlippage", "openingFees", "closingFees"]) {
+      assert.ok(f in s, f);
+      assert.notEqual(typeof s[f], "number", `${f} must not carry a default value`);
+    }
+  }
 });

@@ -78,6 +78,16 @@ export function validateThresholds(thresholds) {
       }
     });
   }
+  const em = thresholds.exitMix;
+  if (
+    !em ||
+    !(em.op in OPS) ||
+    !OUTCOMES.has(em.outcome) ||
+    typeof em.value !== "number" ||
+    !Number.isFinite(em.value)
+  ) {
+    fail("BAD_THRESHOLDS", "exitMix needs op, value and outcome");
+  }
   const w = thresholds.checks.C1.weights;
   if (!w || !Array.isArray(w.coreFields) || !Array.isArray(w.secondaryFields)) {
     fail("BAD_THRESHOLDS", "C1 weights need coreFields and secondaryFields");
@@ -207,6 +217,59 @@ function notRun(reason) {
   return { status: "not_run", outcome: "cap", reason };
 }
 
+const EXIT_CLASSES = [
+  ["profit_target", /profit/i],
+  ["stop", /stop/i],
+  ["expiry", /expir/i],
+  ["time", /time|dte|dit|mit/i],
+];
+/** Exit-reason counts by class (profit target, stop, expiry, time, other). */
+function exitClasses(counts) {
+  const out = { profit_target: 0, stop: 0, expiry: 0, time: 0, other: 0 };
+  for (const [reason, n] of Object.entries(counts)) {
+    if (typeof n !== "number" || !Number.isFinite(n) || n < 0) {
+      fail(
+        "BAD_RESULTS",
+        `exit-reason count for ${JSON.stringify(reason)} must be a number`,
+      );
+    }
+    const cls = EXIT_CLASSES.find(([, re]) => re.test(reason))?.[0] ?? "other";
+    out[cls] += n;
+  }
+  return out;
+}
+
+/** Largest difference in exit-reason share between author and author_base. */
+export function compareExitMix(author, authorBase, rule) {
+  const a = exitClasses(author);
+  const b = exitClasses(authorBase);
+  const ta = Object.values(a).reduce((x, y) => x + y, 0);
+  const tb = Object.values(b).reduce((x, y) => x + y, 0);
+  if (ta === 0 || tb === 0) {
+    return {
+      status: "not_run",
+      reason: "no exit reasons counted for author or author_base",
+    };
+  }
+  const diffs = Object.fromEntries(
+    Object.keys(a).map((k) => [k, Math.abs(a[k] / ta - b[k] / tb)]),
+  );
+  const maxShareDiff = Math.max(...Object.values(diffs));
+  const changed = OPS[rule.op](maxShareDiff, rule.value);
+  return {
+    status: changed ? "changed" : "same",
+    maxShareDiff,
+    author: a,
+    authorBase: b,
+    ...(changed
+      ? {
+          reason:
+            "re-costing changed the exit-reason mix (author_base does not trade like the author run)",
+        }
+      : {}),
+  };
+}
+
 /**
  * Evaluate one check-results object against the thresholds.
  * Returns the full report (verdict, per-check rows, not-tested list).
@@ -231,6 +294,18 @@ export function evaluate(
     }
   }
   validateRuleSheet(results.ruleSheet, thresholds.checks.C1.weights);
+  if (!results.runSizes || typeof results.runSizes !== "object") {
+    fail(
+      "BAD_RESULTS",
+      "runSizes (distinct contract counts per run label) is required",
+    );
+  }
+  if (!Array.isArray(results.zeroCostFields)) {
+    fail(
+      "BAD_RESULTS",
+      "zeroCostFields (from the run request) is required, [] when none",
+    );
+  }
   // One label per role: a run reused for two roles would compare it with itself.
   const labels = Object.values(runs).filter(
     (v) => v !== undefined && v !== null,
@@ -263,8 +338,17 @@ export function evaluate(
     // Off the base costs without author_base, every cost-dependent check would
     // compare runs at different costs: not run (C2 and C3 do not depend on costs).
     const costDependent = ["C4", "C5", "C6", "C7", "C8"].includes(id);
+    const otherRole = { C4: "naive", C7: "cost_2x", C8: "minute_stop" }[id];
+    const otherLabel = otherRole ? runs[otherRole] : undefined;
+    const otherSize = otherLabel ? results.runSizes[otherLabel] : undefined;
     if (costDependent && costBasis.status !== "base") {
       row = notRun("author_base run missing (author off base costs)");
+    } else if (otherLabel && otherSize === undefined) {
+      row = notRun(`contract counts of the ${otherRole} run not read`);
+    } else if (otherLabel && otherSize !== 1) {
+      row = notRun(
+        `${otherRole} run is not on fixed size (${otherSize} contract counts)`,
+      );
     } else if (id === "C1") {
       if (!hasDescription(results.source)) {
         row = {
@@ -325,9 +409,32 @@ export function evaluate(
         if (SEVERITY[row.outcome] < SEVERITY.cap) row.outcome = "cap";
       }
     }
+    // R6: an explicit 0 slippage in the base scenario makes C7 meaningless.
+    const zeroSlip = results.zeroCostFields.filter((f) =>
+      /^base\..*Slippage$/.test(f),
+    );
+    if (id === "C7" && zeroSlip.length > 0 && row.status === "run") {
+      if (SEVERITY[row.outcome] < SEVERITY.cap) row.outcome = "cap";
+      row.reason = `slippage 0 in the base scenario: ${zeroSlip.join(", ")}`;
+    }
     row.name = def.name;
     rows[id] = row;
   }
+
+  // author_base must trade like the author run: re-costing must not change the
+  // exit-reason mix (e.g. a closing-order target that fills only at 0 slippage).
+  const exitMix = !runs.author_base
+    ? { status: "n/a" }
+    : results.exitMix?.author && results.exitMix?.authorBase
+      ? compareExitMix(
+          results.exitMix.author,
+          results.exitMix.authorBase,
+          thresholds.exitMix,
+        )
+      : {
+          status: "not_run",
+          reason: "exit-reason counts of author and author_base not read",
+        };
 
   // Step 2: a C3 cap means the backtest is not the strategy. The triage stops
   // with unclear; later checks are logged, not counted, and never reject (Q6).
@@ -349,7 +456,10 @@ export function evaluate(
     (id) => !rows[id].afterGate && !rows[id].afterStop,
   ).map((id) => rows[id]);
   const capped =
-    counted.some((r) => r.outcome === "cap") || costBasis.status !== "base";
+    counted.some((r) => r.outcome === "cap") ||
+    costBasis.status !== "base" ||
+    exitMix.status === "changed" ||
+    exitMix.status === "not_run";
   const verdict = counted.some((r) => r.outcome === "reject")
     ? "reject"
     : capped
@@ -366,6 +476,14 @@ export function evaluate(
     status: rows[id].status,
     reason: rows[id].reason,
   }));
+  if (exitMix.status === "changed" || exitMix.status === "not_run") {
+    notTested.unshift({
+      id: "exitMix",
+      name: "author_base trades like the author run",
+      status: exitMix.status,
+      reason: exitMix.reason,
+    });
+  }
   if (costBasis.status !== "base") {
     notTested.unshift({
       id: "costs",
@@ -390,6 +508,9 @@ export function evaluate(
     gateFailed,
     stoppedAt,
     costBasis,
+    exitMix,
+    runSizes: results.runSizes,
+    zeroCostFields: results.zeroCostFields,
     checks: rows,
     notTested,
     thresholdsVersion: thresholds.version,
@@ -439,6 +560,9 @@ export function logLine(report) {
     verdict: report.verdict,
     stoppedAt: report.stoppedAt,
     costBasis: report.costBasis,
+    exitMix: report.exitMix,
+    runSizes: report.runSizes,
+    zeroCostFields: report.zeroCostFields,
     variantsTried: report.variantsTried,
     thresholdsVersion: report.thresholdsVersion,
     thresholdsSha256: report.thresholdsSha256,
@@ -477,6 +601,18 @@ export function summary(report, thresholds) {
       ? `Costs: checks read ${report.costBasis.checkedRun} on the base cost scenario.`
       : `Costs: ${report.costBasis.reason}; verdict capped.`,
   );
+  if (report.zeroCostFields.length > 0) {
+    lines.push(
+      `Zero cost fields: ${report.zeroCostFields.join(", ")} (explicit 0 in the cost file).`,
+    );
+  }
+  if (report.exitMix.status === "changed") {
+    lines.push(
+      `Exit mix: re-costing changed the trade path (largest exit-reason share difference ${(report.exitMix.maxShareDiff * 100).toFixed(1)} %); verdict capped.`,
+    );
+  } else if (report.exitMix.status === "not_run") {
+    lines.push(`Exit mix: ${report.exitMix.reason}; verdict capped.`);
+  }
   lines.push("");
   for (const id of ORDER) {
     const r = report.checks[id];

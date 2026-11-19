@@ -10,6 +10,7 @@ import * as verdict from "../scripts/triage-verdict.mjs";
 import { stressMetrics, ruleCalendarArgs } from "../scripts/triage-collect.mjs";
 
 const { evaluate, logLine, run } = verdict;
+const summaryOf = (report) => verdict.summary(report, thresholds);
 const here = dirname(fileURLToPath(import.meta.url));
 const thresholdsPath = join(
   here,
@@ -50,6 +51,8 @@ function passing(overrides = {}) {
     runs: { author: "a", naive: "n", cost_2x: "c" },
     authorUsesIntraMinuteStops: false,
     authorCostsMatchBase: true,
+    runSizes: { a: 1, n: 1, c: 1, ab: 1, m: 1 },
+    zeroCostFields: [],
     checks: {
       C2: { metrics: { trades: 150, months: 40, distinctContractCounts: 1 } },
       C3: { metrics: { maxYearDteMismatchShare: 0, missingRuleDayShare: 0 } },
@@ -232,6 +235,7 @@ test("Q5: author costs off the base scenario without an author_base run cap the 
     passing({
       authorCostsMatchBase: false,
       runs: { author: "a", author_base: "ab", naive: "n", cost_2x: "c" },
+      exitMix: { author: { Expired: 5 }, authorBase: { Expired: 5 } },
     }),
     thresholds,
   );
@@ -374,4 +378,81 @@ test("v2 fix 4: the log line carries the cost scenarios' sha256", () => {
   const sha = "a".repeat(64);
   const report = evaluate(passing({ costsSha256: sha }), thresholds);
   assert.equal(JSON.parse(logLine(report)).inputs.costsSha256, sha);
+});
+
+// ---------------------------------------------------------------------------
+// PRD rev 210 (round 8 addendum): exit mix, fixed size on every run, zero costs
+// ---------------------------------------------------------------------------
+
+function based(overrides = {}) {
+  return passing({
+    authorCostsMatchBase: false,
+    runs: { author: "a", author_base: "ab", naive: "n", cost_2x: "c" },
+    exitMix: {
+      author: { "Profit Target": 60, "Stop Loss": 30, Expired: 10 },
+      authorBase: { "Profit Target": 58, "Stop Loss": 32, Expired: 10 },
+    },
+    ...overrides,
+  });
+}
+
+test("rev210 MQ2: author_base that trades like the author passes the exit-mix guard", () => {
+  const report = evaluate(based(), thresholds);
+  assert.equal(report.verdict, "continue");
+  assert.equal(report.exitMix.status, "same");
+});
+
+test("rev210 MQ2: a changed exit-reason mix after re-costing flags and caps", () => {
+  const r = based({
+    exitMix: {
+      author: { Expired: 10737, "Stop Loss": 4805 },
+      authorBase: { Expired: 86, "Profit Target": 10493, "Stop Loss": 4963 },
+    },
+  });
+  const report = evaluate(r, thresholds);
+  assert.equal(report.verdict, "unclear");
+  assert.equal(report.exitMix.status, "changed");
+  assert.ok(report.exitMix.maxShareDiff > 0.6);
+  assert.ok(report.notTested.some((n) => n.id === "exitMix"));
+  assert.match(summaryOf(report), /re-costing changed the trade path/);
+});
+
+test("rev210 MQ2: author_base without exit-reason counts is not checked -> cap", () => {
+  const r = based();
+  delete r.exitMix;
+  const report = evaluate(r, thresholds);
+  assert.equal(report.verdict, "unclear");
+  assert.equal(report.exitMix.status, "not_run");
+});
+
+test("rev210 MQ3: a run a check uses that is not on fixed size makes that check not run", () => {
+  const r = passing({ runSizes: { a: 1, n: 3, c: 1 } });
+  const report = evaluate(r, thresholds);
+  assert.equal(report.checks.C4.status, "not_run");
+  assert.match(report.checks.C4.reason, /naive run is not on fixed size/);
+  assert.equal(report.checks.C7.status, "run");
+  const missing = passing({ runSizes: { a: 1, n: 1 } });
+  const r2 = evaluate(missing, thresholds);
+  assert.equal(r2.checks.C7.status, "not_run");
+  assert.match(
+    r2.checks.C7.reason,
+    /contract counts of the cost_2x run not read/,
+  );
+});
+
+test("rev210 R6: an explicit zero slippage in the base scenario is named and caps C7", () => {
+  const report = evaluate(
+    passing({ zeroCostFields: ["base.exitSlippage"] }),
+    thresholds,
+  );
+  assert.equal(report.checks.C7.outcome, "cap");
+  assert.match(
+    report.checks.C7.reason,
+    /slippage 0 in the base scenario: base.exitSlippage/,
+  );
+  assert.match(summaryOf(report), /Zero cost fields: base.exitSlippage/);
+  assert.throws(
+    () => evaluate(passing({ zeroCostFields: undefined }), thresholds),
+    /^Error: BAD_RESULTS: zeroCostFields/,
+  );
 });

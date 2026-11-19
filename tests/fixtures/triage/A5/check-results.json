@@ -68,6 +68,12 @@
   },
   "costs": null,
   "costsSha256": null,
+  "zeroCostFields": [],
+  "runSizes": {
+    "A5-naive": 1,
+    "A5-cost2x": 1,
+    "A5-author": 1
+  },
   "variantsTried": 1,
   "authorUsesIntraMinuteStops": false,
   "authorCostsMatchBase": true,

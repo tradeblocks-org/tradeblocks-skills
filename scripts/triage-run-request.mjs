@@ -127,8 +127,11 @@ export function usesIntraMinuteStops(p) {
   return anyGroup && zeroDte && ["SPX", "SPY"].includes(p.underlying);
 }
 
+// A cost field the author's settings do not state is unknown, never 0.
 function costsOf(p) {
-  return Object.fromEntries(COST_FIELDS.map((f) => [f, p[f] ?? 0]));
+  return Object.fromEntries(
+    COST_FIELDS.map((f) => [f, typeof p[f] === "number" ? p[f] : null]),
+  );
 }
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -141,7 +144,7 @@ function changedOnly(patch, current) {
 }
 
 const sameCosts = (a, b) =>
-  COST_FIELDS.every((f) => Math.abs(a[f] - b[f]) < 1e-9);
+  COST_FIELDS.every((f) => a[f] !== null && Math.abs(a[f] - b[f]) < 1e-9);
 
 // Naive run, fail closed: keep only the strategy's structure, expiry, strike
 // rule, entry days and times and the date range; every other field is a lever
@@ -304,9 +307,19 @@ export function runRequest(settings, scenarios, authorLabel, have = []) {
       );
     }
   }
+  // R6: an explicit 0 is allowed but named (a slippage of 0 caps C7).
+  const zeroCostFields = [
+    ...COST_FIELDS.filter((f) => scenarios.base[f] === 0).map(
+      (f) => `base.${f}`,
+    ),
+    ...COST_FIELDS.filter((f) => scenarios.cost2x[f] === 0).map(
+      (f) => `cost2x.${f}`,
+    ),
+  ];
   return {
     flags,
     baseScenario: scenarios.baseName,
+    zeroCostFields,
     // Identifies the exact cost values used, for the check results and the log.
     costsSha256: createHash("sha256")
       .update(
