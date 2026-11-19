@@ -34,6 +34,8 @@ The setting is `exitConditions[].useIntraMinuteStop` (one boolean per exit group
 
 A profit target set as a closing order near zero (e.g. buy back at 0.05) interacts with `exitSlippage`: the target appears to fill only when the price **including** the exit slippage reaches it. With an exit slippage of 0.05 such a target never filled and the trades ran to expiry; with 0 it filled. Re-costing alone can therefore change which exits a strategy takes.
 
-Real case (0 DTE SPX iron condor, 15.5k trades): the author run (exit slippage 0.05) had Expired 10,737 / Profit Target 0 / Stop 4,805; the same run with only the five cost fields changed to a scenario with exit slippage 0 had Expired 86 / Profit Target 10,493 / Stop 4,963. Inferred from the exit-reason counts and the settings diff, not from Option Omega documentation.
+Real case (0 DTE SPX iron condor, 15.5k trades): the author run (exit slippage 0.05) had Expired 10,737 / Profit Target 0 / Stop 4,805; the same run with only the five cost fields changed to a scenario with exit slippage 0 had Expired 86 / Profit Target 10,493 / Stop 4,963. Inferred from the exit-reason counts and the settings diff, not from Option Omega documentation. Re-run with exit slippage 0.05 in both: Profit Target 0 again (author_base Expired 10,443 / Stop 5,099).
+
+**Expiry pays no exit slippage (observed).** The naive run (no profit target, no stop, every trade held to expiry) built once with exit slippage 0 and once with 0.05, all else equal: same 15,542 trades, all Expired, same net P/L to the cent. A run whose trades all expire does not depend on `exitSlippage`.
 
 Consequence: author_base must trade like the author run. The verdict script compares their exit-reason shares and caps when the largest difference is above `thresholds.json` → `exitMix`; the cost file needs an explicit `exitSlippage` per scenario (never assumed 0).
