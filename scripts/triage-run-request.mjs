@@ -7,111 +7,32 @@
 // Option Omega: a plug-in or the user builds these runs and adds them to the
 // TradeBlocks block with the given labels.
 //
-//   TRIAGE_CONFIG=<local config> node triage-run-request.mjs \
+//   node triage-run-request.mjs \
 //     --settings <author settings JSON> --author-label <label> [--manifest <triage.json>]
+//
+// The local config is found as in triage-config.mjs (default location,
+// TRIAGE_CONFIG overrides); without a complete one it stops with SETUP_NEEDED.
 //
 // <author settings JSON> is Option Omega's get_saved_backtest response (or its
 // `parameters` object). Prints JSON on stdout; errors: "REASON: detail", exit 1.
 
 import { readFileSync, realpathSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import {
+  COST_FIELDS,
+  readConfig,
+  loadScenarios,
+  resolveConfig,
+} from "./triage-config.mjs";
 
-const COST_FIELDS = [
-  "entrySlippage",
-  "exitSlippage",
-  "stopLossSlippage",
-  "openingFees",
-  "closingFees",
-];
-const SLIPPAGE_FIELDS = ["entrySlippage", "exitSlippage", "stopLossSlippage"];
 const MAX_RUNS = 4;
 
 function fail(reason, detail) {
   throw new Error(`${reason}: ${detail}`);
 }
 
-// ---------------------------------------------------------------------------
-// Local config and cost scenarios
-// ---------------------------------------------------------------------------
-
-/** Read and check the local config (one JSON file, path from TRIAGE_CONFIG). */
-export function readConfig(path) {
-  if (!path) fail("NO_CONFIG", "set TRIAGE_CONFIG to the local config file");
-  let config;
-  try {
-    config = JSON.parse(readFileSync(path, "utf8"));
-  } catch (error) {
-    fail("BAD_CONFIG", `${path}: ${error.message}`);
-  }
-  const c = config.costs;
-  if (!c || typeof c.base !== "string")
-    fail("BAD_CONFIG", "costs.base (base scenario name) is required");
-  if (!c.file === !c.command)
-    fail("BAD_CONFIG", "give exactly one of costs.file or costs.command");
-  if (
-    c.command !== undefined &&
-    (!Array.isArray(c.command) || c.command.length === 0)
-  ) {
-    fail(
-      "BAD_CONFIG",
-      'costs.command is an argv array, e.g. ["python3", "my_costs.py"]',
-    );
-  }
-  return config;
-}
-
-/**
- * Cost scenarios as Option Omega field values:
- * { "scenarios": { "<name>": { entrySlippage, exitSlippage, stopLossSlippage, openingFees, closingFees } } }.
- * From costs.file (that JSON) or from costs.command (prints that JSON; no shell).
- */
-export function loadScenarios(config) {
-  let text;
-  try {
-    text = config.costs.file
-      ? readFileSync(config.costs.file, "utf8")
-      : execFileSync(config.costs.command[0], config.costs.command.slice(1), {
-          encoding: "utf8",
-        });
-  } catch (error) {
-    fail("BAD_COSTS", `cannot read the cost scenarios: ${error.message}`);
-  }
-  let scenarios;
-  try {
-    scenarios = JSON.parse(text).scenarios;
-  } catch (error) {
-    fail("BAD_COSTS", `cost scenarios are not JSON: ${error.message}`);
-  }
-  const check = (name) => {
-    const s = scenarios?.[name];
-    if (!s) fail("BAD_COSTS", `scenario ${JSON.stringify(name)} not found`);
-    for (const f of COST_FIELDS) {
-      if (typeof s[f] !== "number" || !Number.isFinite(s[f]) || s[f] < 0) {
-        fail("BAD_COSTS", `scenario ${name}: ${f} must be a number >= 0`);
-      }
-    }
-    return Object.fromEntries(COST_FIELDS.map((f) => [f, s[f]]));
-  };
-  const base = check(config.costs.base);
-  const cost2x = config.costs.cost2x
-    ? check(config.costs.cost2x)
-    : {
-        ...base,
-        ...Object.fromEntries(
-          SLIPPAGE_FIELDS.map((f) => [f, round(base[f] * 2)]),
-        ),
-      };
-  return {
-    base,
-    cost2x,
-    baseName: config.costs.base,
-    cost2xName: config.costs.cost2x ?? `${config.costs.base} x2 slippage`,
-  };
-}
-
-const round = (x) => Math.round(x * 1e6) / 1e6;
+export { readConfig, loadScenarios };
 
 // ---------------------------------------------------------------------------
 // Run request
@@ -365,13 +286,33 @@ export function main(argv, env = process.env) {
   const a = args(argv);
   if (!a.settings || !a["author-label"])
     fail("USAGE", "--settings and --author-label are required");
-  const config = readConfig(env.TRIAGE_CONFIG);
+  const config = resolveConfig(env);
+  if (config.status !== "ready")
+    fail("SETUP_NEEDED", `${config.reason}: run the first-run setup (triage-config.mjs setup)`);
   const scenarios = loadScenarios(config);
   const settings = JSON.parse(readFileSync(a.settings, "utf8"));
   const have = a.manifest
     ? Object.keys(JSON.parse(readFileSync(a.manifest, "utf8")).runs ?? {})
     : [];
-  return runRequest(settings, scenarios, a["author-label"], have);
+  return {
+    ...runRequest(settings, scenarios, a["author-label"], have),
+    execution: execution(config.plugin),
+  };
+}
+
+/** Who builds the runs: a plug-in that runs run requests, else the user. */
+export function execution(plugin) {
+  if (plugin?.exists && plugin.roles.includes("runRequest")) {
+    return {
+      by: "plugin",
+      plugin: plugin.name,
+      call: plugin.skill ? { skill: plugin.skill } : { command: plugin.command, cwd: plugin.cwd },
+    };
+  }
+  return {
+    by: "user",
+    how: "Build each run in the Option Omega web UI from the author run with the listed field changes, export its trade log and import it into the block with the given label.",
+  };
 }
 
 if (

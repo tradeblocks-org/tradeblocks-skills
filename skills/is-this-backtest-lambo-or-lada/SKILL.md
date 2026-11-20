@@ -13,7 +13,7 @@ A triage, not due diligence: a fixed set of checks with fixed thresholds decides
 
 ## Prerequisites
 
-- **Local config** (one JSON file, path in the environment variable `TRIAGE_CONFIG`; start from [templates/local-config.json](templates/local-config.json)): the cost scenarios (your filled copy of [templates/costs.json](templates/costs.json), or a command that prints the same JSON) with the names of the base and, optionally, the 2x scenario; an optional thresholds copy; the verdict-log path; the run-folder root; an optional research-protocol hook. No cost value ever comes from this skill. Every field of every scenario must be a number: a missing, null, empty or non-numeric field stops the skill before any run request (never filled with 0). An explicit 0 is allowed but named in the summary, and a base slippage of 0 caps C7.
+- **Local config**: one JSON file at `$XDG_CONFIG_HOME/tradeblocks-skills/is-this-backtest-lambo-or-lada/local-config.json` (without `XDG_CONFIG_HOME`: `~/.config/...`); the environment variable `TRIAGE_CONFIG` only overrides that path. Shape: [templates/local-config.json](templates/local-config.json). It names where the cost scenarios come from (a cost file in the format of [templates/costs.json](templates/costs.json), or a command that prints the same JSON from the user's own cost source) and the base and, optionally, the 2x scenario; an optional thresholds copy; the verdict-log path; the run-folder root; an optional research-protocol hook; the plug-in answer. Relative paths inside resolve against the file's folder (after a symlink) and commands run there, so one file works wherever its folder is mounted. Without a config the first run sets it up (step 1). No cost value ever comes from this skill. Every field of every scenario must be a number: a missing, null, empty or non-numeric field stops the skill before any run request (never filled with 0). An explicit 0 is allowed but named in the summary, and a base slippage of 0 caps C7.
 - One TradeBlocks block that holds every run of this triage, one `Strategy` label per run (an `oo-capture` portfolio capture, or concatenated trade logs imported with `import_csv`).
 - A manifest `triage.json` (start from [templates/triage.json](templates/triage.json)) naming the block and the run labels: `author` (required), `author_base`, `naive`, `cost_2x`, `minute_stop`; and, per run, its Option Omega date range in `run_ranges` (`rangeStart`/`rangeEnd` of that run's saved settings; the run request prints them as `runRanges`). Never take a range from a daily log or the first and last trade.
 - Thresholds: [thresholds.json](thresholds.json), or the copy named in the local config. Never edit values in the conversation.
@@ -24,7 +24,7 @@ A triage, not due diligence: a fixed set of checks with fixed thresholds decides
 Copy this checklist and tick it off:
 
 ```
-- [ ] 1. Inputs and capabilities
+- [ ] 1. Local config (first-run setup if there is none), inputs and capabilities
 - [ ] 2. Rule sheet and data check (C1 C2 C3) - a triggered C3 rule stops with "unclear"
 - [ ] 3. Run request for missing runs (scripts/triage-run-request.mjs)
 - [ ] 4. Runs in the block, labels verified
@@ -34,6 +34,8 @@ Copy this checklist and tick it off:
 ```
 
 ### 1. Inputs and capabilities
+
+**Local config.** `node "${CLAUDE_SKILL_DIR}/../../scripts/triage-config.mjs"` prints the config with absolute paths (`status: "ready"`); use those paths below. On `status: "setup"` run the first-run setup instead of stopping: collect the answers in a JSON file and call `node "${CLAUDE_SKILL_DIR}/../../scripts/triage-config.mjs" setup --answers <answers.json>`; it prints `status: "ask"` with one `question` per missing answer. Ask the user exactly those, add the answers under their `key` and call it again until `status: "written"`. The keys: `costs` (`{"source": "file", "file": ...}`, `{"source": "command", "command": [argv]}` or `{"source": "new", "scenarios": {"<name>": {...}}}` to create a cost file from the template), `base`, optional `cost2x`, `plugin` (`{"exists": false}` or name, roles `source`/`runRequest` and a `skill` or `command`), optional `verdictLog`, `runRoot` (default `verdicts.jsonl`, `runs` next to the config), `thresholds`, `protocolHook`. Never answer a cost question yourself, with a default or with 0; an explicit 0 from the user is kept and named. A question with `fixIn` is a gap in the user's own cost source: the user fixes it there, the skill never writes that source. If the user cannot supply a cost field, stop before any run request.
 
 Read `triage.json`. Call `get_block_info` for `block_id` and confirm every run label in `runs` is a strategy of the block (`run_sql`: `SELECT DISTINCT strategy FROM trades.trade_data WHERE block_id = '<block_id>'`). A label that is not in the block is a missing run, never a guess.
 
@@ -58,11 +60,11 @@ If a C3 rule triggers, **stop with "unclear"** (the verdict script enforces it: 
 Save the author run's settings (Option Omega `get_saved_backtest`) as JSON and run:
 
 ```
-TRIAGE_CONFIG=<local config> node "${CLAUDE_SKILL_DIR}/../../scripts/triage-run-request.mjs" \
+node "${CLAUDE_SKILL_DIR}/../../scripts/triage-run-request.mjs" \
   --settings <author settings.json> --author-label "<author label>" --manifest <triage.json>
 ```
 
-It reads the base scenario through the local config and prints the runs still needed, each as exact field changes to the author run (at most four): `author_base` when the author's costs differ from the base scenario (it replaces the author in every check), `naive` and `cost_2x` at base costs, `minute_stop` when Option Omega honours the author's intra-minute stops. It also prints the flags `author_costs_match_base` and `author_uses_intra_minute_stops` and `runRanges` (each run's Option Omega date range, for `run_ranges`) for the manifest, and `costsSha256` (the exact cost values used) and `zeroCostFields` (cost fields that are an explicit 0) for the check results. A cost field the author's settings do not state never matches the base: `author_base` is requested. Any `reviewByHand` field in the naive run is an author setting the script cannot switch off safely: check it by hand before building the run. Details: [references/run-request.md](references/run-request.md). You never run Option Omega yourself (R10); a plug-in or the user builds the runs and adds them to the block with the given labels.
+It reads the base scenario through the local config and prints the runs still needed, each as exact field changes to the author run (at most four): `author_base` when the author's costs differ from the base scenario (it replaces the author in every check), `naive` and `cost_2x` at base costs, `minute_stop` when Option Omega honours the author's intra-minute stops. It also prints the flags `author_costs_match_base` and `author_uses_intra_minute_stops` and `runRanges` (each run's Option Omega date range, for `run_ranges`) for the manifest, and `costsSha256` (the exact cost values used) and `zeroCostFields` (cost fields that are an explicit 0) for the check results. A cost field the author's settings do not state never matches the base: `author_base` is requested. Any `reviewByHand` field in the naive run is an author setting the script cannot switch off safely: check it by hand before building the run. Details: [references/run-request.md](references/run-request.md). You never run Option Omega yourself (R10). The output's `execution` says who builds the runs: `by: "plugin"` hands the run request to the plug-in from the local config (`call`: its skill, or its command with the request file as last argument, run in `cwd`); `by: "user"` means print the runs for the user to build in the Option Omega web UI, export and import with the given labels.
 
 ### 4. Runs in the block
 
@@ -89,16 +91,16 @@ Run every check even after one fails, so the log holds complete rows (N50).
 
 ### 7. Verdict
 
-Write `check-results.json` in the run folder (root from the local config): `case`, `runAt` (ISO time of this run), `source` (`{ref, description}` or null), `ruleSheet` (all 13 fields), `blockId`, `runs` (one distinct label per role), `costs` (the base and 2x scenario names from the local config; never from the manifest), `costsSha256` and `zeroCostFields` (both from the run request; `[]` when no field is 0), `runSizes` and, with author_base, `exitMix` (step 4), `c4Coverage` (step 5: `{ source, A, B }` or `{ source, flatWindowTrimmed }`), `variantsTried` (from the manifest; logged only in V1), `authorUsesIntraMinuteStops` and `authorCostsMatchBase` (both required, from the run request), `checks` (`{ "C2": { "metrics": {...} }, ... }`; a check that could not run: `{ "notRun": "<reason>" }`; one metric that could not be read: `null` plus `"notRunReason"`), `versions` (`tradeblocks`, `optionomega` when known), `ooRunIds`, `runFolder`. Then:
+Write `check-results.json` in the run folder (`runRoot` from step 1): `case`, `runAt` (ISO time of this run), `source` (`{ref, description}` or null), `ruleSheet` (all 13 fields), `blockId`, `runs` (one distinct label per role), `costs` (the base and 2x scenario names from the local config; never from the manifest), `costsSha256` and `zeroCostFields` (both from the run request; `[]` when no field is 0), `runSizes` and, with author_base, `exitMix` (step 4), `c4Coverage` (step 5: `{ source, A, B }` or `{ source, flatWindowTrimmed }`), `variantsTried` (from the manifest; logged only in V1), `authorUsesIntraMinuteStops` and `authorCostsMatchBase` (both required, from the run request), `checks` (`{ "C2": { "metrics": {...} }, ... }`; a check that could not run: `{ "notRun": "<reason>" }`; one metric that could not be read: `null` plus `"notRunReason"`), `versions` (`tradeblocks`, `optionomega` when known), `ooRunIds`, `runFolder`. Then:
 
 ```
 node "${CLAUDE_SKILL_DIR}/../../scripts/triage-verdict.mjs" \
   --results <run folder>/check-results.json \
-  [--thresholds <thresholds copy from the local config>] \
-  --log <verdict log from the local config> --summary <run folder>/summary.md
+  [--thresholds <thresholds from step 1, when not null>] \
+  --log <verdictLog from step 1> --summary <run folder>/summary.md
 ```
 
-The script validates the thresholds and the inputs, computes C1 from the rule sheet, applies every threshold, caps for missing runs, for runs off the base costs and for an author_base that trades differently, makes a check not run when its other run is not on fixed size, enforces the step-2 stop and the C4 gate, flags an interval that excludes its own point estimate (R9), appends one JSONL line (continue, reject and unclear alike, with the sha256 of the thresholds and of the script) and writes the summary. Show the summary as written; add at most two sentences of your own, in the verdict language below. If the local config names a research-protocol hook, call it with the run folder.
+The script validates the thresholds and the inputs, computes C1 from the rule sheet, applies every threshold, caps for missing runs, for runs off the base costs and for an author_base that trades differently, makes a check not run when its other run is not on fixed size, enforces the step-2 stop and the C4 gate, flags an interval that excludes its own point estimate (R9), appends one JSONL line (continue, reject and unclear alike, with the sha256 of the thresholds and of the script) and writes the summary. Show the summary as written; add at most two sentences of your own, in the verdict language below. If step 1 shows a `protocolHook`, call its command with the run folder as last argument, in its `cwd`.
 
 ## Interpretation
 

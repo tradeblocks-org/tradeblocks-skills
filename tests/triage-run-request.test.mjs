@@ -43,7 +43,12 @@ function setup(costs = {}) {
   const configPath = join(dir, "config.json");
   writeFileSync(
     configPath,
-    JSON.stringify({ costs: { file: costFile, base: "base", ...costs } }),
+    JSON.stringify({
+      costs: { file: costFile, base: "base", ...costs },
+      verdictLog: "verdicts.jsonl",
+      runRoot: "runs",
+      plugin: { exists: false },
+    }),
   );
   return { dir, configPath, costFile };
 }
