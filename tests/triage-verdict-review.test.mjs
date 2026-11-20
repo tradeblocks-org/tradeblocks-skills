@@ -306,6 +306,7 @@ test("C3: the rule calendar covers the author's OO range and the entry window", 
     entryWindow: { from: "09:45", to: "15:15" },
   });
   assert.deepEqual(args.dateRange, { start: "2016-01-04", end: "2018-12-31" });
+  assert.equal(args.recordEnd, "2018-12-31");
 });
 
 // --- Fixtures: the named check decides ----------------------------------------------
@@ -709,4 +710,50 @@ test("rev214 N1: a TradeBlocks refusal in C4 makes C4 not run with TradeBlocks' 
     return tb.call(name, a);
   } };
   await assert.rejects(collectCase(transport, manifest, t), /^Error: MCP_ERROR/);
+});
+
+test("rev217: C3 passes the run's rangeEnd as recordEnd and refuses a missing-day share from a server without it", async () => {
+  const { collectCase } = await import("../scripts/triage-collect.mjs");
+  const stats = {
+    stats: { totalTrades: 200, netPl: 1000 },
+    plWithoutBestDays: [1, 5, 10].map((n) => ({ n, pl: 500, shareOfTotal: 0.1 })),
+    positiveYearShare: 1,
+  };
+  const calls = [];
+  const fake = (calendar) => ({
+    async call(name, args) {
+      if (name === "get_rule_calendar") {
+        calls.push(args);
+        return calendar;
+      }
+      if (name === "run_sql") return { rows: [{ strategy: "a", n: 1 }] };
+      if (name === "get_statistics") return stats;
+      if (name === "get_period_returns") return { periods: [{ period: "2022-06" }, { period: "2025-12" }] };
+      if (name === "stress_test") return { scenarios: [] };
+      if (name === "paired_bootstrap_comparison")
+        return { point: 1, ci: { low: 0.5, high: 2 }, coverageSource: "caller", coverage: {} };
+      throw new Error(`unexpected ${name}`);
+    },
+  });
+  const manifest = {
+    block_id: "b",
+    runs: { author: "a", naive: "n" },
+    oo_settings: { entryDays: ["Monday"], dte: 7, useExactDte: true, entryFilters: [], rangeStart: "2022-06-06", rangeEnd: "2025-12-29" },
+  };
+  const t = JSON.parse(readFileSync(thresholdsPath, "utf8"));
+  const current = {
+    missingRuleDays: { share: 0 },
+    unobservableRuleDays: { recordEnd: "2025-12-29", count: 1, sample: ["2025-12-29"] },
+    dte: { maxYearMismatchShare: 0 },
+  };
+  const { checks } = await collectCase(fake(current), manifest, t);
+  assert.equal(calls[0].recordEnd, "2025-12-29");
+  assert.equal(checks.C3.metrics.missingRuleDayShare, 0);
+  assert.equal(checks.C3.notRunReason, undefined);
+
+  const old = { missingRuleDays: { share: 0.006 }, dte: { maxYearMismatchShare: 0 } };
+  const r = await collectCase(fake(old), manifest, t);
+  assert.equal(r.checks.C3.metrics.missingRuleDayShare, null);
+  assert.match(r.checks.C3.notRunReason, /recordEnd/);
+  assert.equal(r.checks.C3.metrics.maxYearDteMismatchShare, 0);
 });

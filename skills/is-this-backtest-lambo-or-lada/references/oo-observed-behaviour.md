@@ -32,6 +32,8 @@ Option Omega never reports a close after `rangeEnd` (observed: 7 DTE SPX put spr
 - `closeOpenTradesAtTestCompletion: false`: the entry on `rangeEnd` is opened but left open. It is **not** in the trade log; the result reports it only as `numberOfOpenTrades`.
 - `closeOpenTradesAtTestCompletion: true`: the same entry is closed **on** `rangeEnd` with `reasonClosed: "Backtest Completed"`, closing fees and exit costs charged.
 
+Consequence for C3: an entry on a rule day whose earliest expiry (entry date + DTE) is after `rangeEnd` is not in the trade log (first behaviour), so it is not a missing rule day: C3 passes `rangeEnd` as `recordEnd` and `get_rule_calendar` lists such days in `unobservableRuleDays`. A rule day whose expiry is on or before `rangeEnd` and has no trade still counts as missing; 0 DTE is never affected.
+
 Consequence for C4: every trade of a run closes inside its own range, so the range is the run's coverage and a TradeBlocks refusal for a trade outside it means the block does not match the ranges (C4 not run). For the exit-mix guard one "Backtest Completed" exit per run is the end of the test, not a trading decision, and is left out; any further one counts as "other". The synthetic fixtures follow the first behaviour.
 
 ## Intra-minute stops

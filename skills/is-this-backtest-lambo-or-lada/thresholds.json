@@ -11,7 +11,9 @@
     "tradeblocks": null,
     "tradeblocksPending": "first TradeBlocks release containing tradeblocks-org/tradeblocks#639, #640, #641, #642 and #648 (paired-comparison grid fix: day grid from the compared strategies only); pin the version here before this skill is merged",
     "tools": {
-      "get_rule_calendar": [],
+      "get_rule_calendar": [
+        "recordEnd"
+      ],
       "paired_bootstrap_comparison": [
         "unobservedDays",
         "grid",
@@ -24,7 +26,7 @@
       "stress_test": [],
       "run_sql": []
     },
-    "description": "Tools and options the checks call: get_rule_calendar (C3, #641), paired_bootstrap_comparison unobservedDays/grid/coverage (C4, #640; day grid from the two arms only, grid-fix PR), get_statistics topDays (C5, #642). A missing tool or option makes its check not run. The interval fix #639 cannot be detected from the tool list; until the pinned release, the interval guard (point outside its own interval -> cap) is the only protection."
+    "description": "Tools and options the checks call: get_rule_calendar recordEnd (C3, #641), paired_bootstrap_comparison unobservedDays/grid/coverage (C4, #640; day grid from the two arms only, grid-fix PR), get_statistics topDays (C5, #642). A missing tool or option makes its check not run. The interval fix #639 cannot be detected from the tool list; until the pinned release, the interval guard (point outside its own interval -> cap) is the only protection."
   },
   "checks": {
     "C1": {

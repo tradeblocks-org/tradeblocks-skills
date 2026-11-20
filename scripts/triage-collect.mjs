@@ -128,7 +128,13 @@ export function ruleCalendarArgs(oo) {
     oo.rangeStart && oo.rangeEnd
       ? { start: oo.rangeStart, end: oo.rangeEnd }
       : undefined;
-  return { rule, ...(dateRange ? { dateRange } : {}) };
+  // Option Omega reports no close after rangeEnd: an entry that would expire
+  // later is left open and out of the log, so it is not a missing rule day.
+  return {
+    rule,
+    ...(dateRange ? { dateRange } : {}),
+    ...(oo.rangeEnd ? { recordEnd: oo.rangeEnd } : {}),
+  };
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -254,17 +260,23 @@ export async function collectCase(tb, manifest, thresholds) {
     ...args,
   });
   const filtered = (oo.entryFilters ?? []).length > 0;
-  let missingRuleDayShare = rcAuthor.missingRuleDays.share;
-  let notRunReason;
+  // A server without recordEnd counts the open last entry as missing.
+  const missingShare = (rc) =>
+    args.recordEnd && !rc.unobservableRuleDays ? null : rc.missingRuleDays.share;
+  const noRecordEnd =
+    "missing rule days need get_rule_calendar recordEnd (TradeBlocks too old)";
+  let missingRuleDayShare = missingShare(rcAuthor);
+  let notRunReason = missingRuleDayShare === null ? noRecordEnd : undefined;
   if (filtered) {
     if (naive) {
-      missingRuleDayShare = (
+      missingRuleDayShare = missingShare(
         await tb.call("get_rule_calendar", {
           blockId: block,
           strategy: naive,
           ...args,
-        })
-      ).missingRuleDays.share;
+        }),
+      );
+      notRunReason = missingRuleDayShare === null ? noRecordEnd : undefined;
     } else {
       missingRuleDayShare = null;
       notRunReason =
