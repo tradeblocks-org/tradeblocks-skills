@@ -9,7 +9,7 @@
   },
   "requires": {
     "tradeblocks": null,
-    "tradeblocksPending": "first TradeBlocks release containing tradeblocks-org/tradeblocks#639, #640, #641 and #642 and the paired-comparison grid fix (day grid from the compared strategies only; PR not opened yet); pin the version here before this skill is merged",
+    "tradeblocksPending": "first TradeBlocks release containing tradeblocks-org/tradeblocks#639, #640, #641, #642 and #648 (paired-comparison grid fix: day grid from the compared strategies only); pin the version here before this skill is merged",
     "tools": {
       "get_rule_calendar": [],
       "paired_bootstrap_comparison": [

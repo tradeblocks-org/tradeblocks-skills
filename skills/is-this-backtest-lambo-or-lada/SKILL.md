@@ -1,7 +1,7 @@
 ---
 name: is-this-backtest-lambo-or-lada
 description: Triage of a third-party SPX option strategy from an existing Option Omega backtest or trade log - continue, reject or unclear within minutes, from fixed checks (baseline vs. naive version, top-day dependence, stress, 2x slippage, minute stops, sample size and fixed size, expiry calendar, fidelity to the source) and fixed thresholds, on the user's own base costs. Use when someone asks whether a published or shared options backtest is worth a closer look, "lambo or lada", "is this backtest real", or to triage a YouTube/Discord strategy that is already in a TradeBlocks block.
-compatibility: Requires the TradeBlocks MCP server with get_rule_calendar, paired_bootstrap_comparison (unobservedDays, grid, coverage; day grid from the compared strategies only) and get_statistics (topDays) - the first TradeBlocks release with PRs #639-#642 and the paired-comparison grid fix; checks whose tool or option is missing are reported as not run. Node.js for the scripts. Reads Option Omega backtest settings; never runs Option Omega.
+compatibility: Requires the TradeBlocks MCP server with get_rule_calendar, paired_bootstrap_comparison (unobservedDays, grid, coverage; day grid from the compared strategies only) and get_statistics (topDays) - the first TradeBlocks release with PRs #639-#642 and #648 (paired-comparison grid fix); checks whose tool or option is missing are reported as not run. Node.js for the scripts. Reads Option Omega backtest settings; never runs Option Omega.
 metadata:
   author: carsten
   version: "0.1.0"
