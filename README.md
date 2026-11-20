@@ -104,6 +104,13 @@ TRIAGE_TB_IMPORT_ROOT=<this fixtures folder as the server sees it> \
   node scripts/triage-collect.mjs --tb-version <server version>   # rewrite check-results.json
 ```
 
+The example cost scenario (`skills/is-this-backtest-lambo-or-lada/templates/costs-example.json`) is exported from the maintainer's own cost source, never typed in. The script writes the five values of one scenario under the name `example`, with the export date and their sha256; the source's path and scenario name stay out of the file. `npm test` checks the file against its sha256.
+
+```
+node scripts/triage-costs-example.mjs --scenario <name> --command <argv that prints your cost scenarios>
+node scripts/triage-costs-example.mjs --scenario <name> --file <your cost file>
+```
+
 `triage-collect.mjs` makes the TradeBlocks calls the skill's SKILL.md prescribes. Leave `TRIAGE_TB_IMPORT_ROOT` unset when the blocks already exist on the server. Regenerate after a TradeBlocks change that affects these tools, and review the diff before committing.
 
 ## Links

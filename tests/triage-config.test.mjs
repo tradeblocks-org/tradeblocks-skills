@@ -165,11 +165,11 @@ test("no config: run request stops with SETUP_NEEDED naming the path, not NO_CON
   );
 });
 
-test("setup with no answers asks where the costs come from, the base scenario and the plug-in", () => {
+test("setup with no answers asks first whether own costs exist, and the plug-in (rev 230)", () => {
   const home = tmp();
   const r = setup({}, { HOME: home });
   assert.equal(r.status, "ask");
-  assert.deepEqual(keys(r).sort(), ["base", "costs.source", "plugin"]);
+  assert.deepEqual(keys(r).sort(), ["ownCosts", "plugin"]);
   assert.equal(existsSync(defaultConfigPath({ HOME: home })), false);
 });
 

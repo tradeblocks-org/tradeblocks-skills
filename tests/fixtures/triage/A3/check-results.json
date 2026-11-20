@@ -69,6 +69,7 @@
   "costs": null,
   "costsSha256": null,
   "zeroCostFields": [],
+  "costsExample": false,
   "runSizes": {
     "A3-author": 1,
     "A3-naive": 1,

@@ -252,6 +252,8 @@ export function runRequest(settings, scenarios, authorLabel, have = []) {
   return {
     flags,
     baseScenario: scenarios.baseName,
+    // The shipped example instead of the user's own costs: summary, log and C7 say so.
+    costsExample: scenarios.example === true,
     runRanges,
     zeroCostFields,
     // Identifies the exact cost values used, for the check results and the log.

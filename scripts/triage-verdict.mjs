@@ -36,6 +36,7 @@ const DEFAULT_THRESHOLDS = join(
   "thresholds.json",
 );
 
+const COSTS_EXAMPLE = "costs: example (not your own)";
 const ORDER = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"];
 const SEVERITY = { pass: 0, cap: 1, reject: 2 };
 const OPS = {
@@ -331,6 +332,12 @@ export function evaluate(
       "zeroCostFields (from the run request) is required, [] when none",
     );
   }
+  if (typeof results.costsExample !== "boolean") {
+    fail(
+      "BAD_RESULTS",
+      "costsExample (from the run request) is required: true when the costs are the shipped example",
+    );
+  }
   // One label per role: a run reused for two roles would compare it with itself.
   const labels = Object.values(runs).filter(
     (v) => v !== undefined && v !== null,
@@ -487,6 +494,11 @@ export function evaluate(
       if (SEVERITY[row.outcome] < SEVERITY.cap) row.outcome = "cap";
       row.reason = `slippage 0 in the base scenario: ${zeroSlip.join(", ")}`;
     }
+    // PRD rev 230: example costs say nothing about the user's own costs.
+    if (id === "C7" && results.costsExample && row.status === "run") {
+      if (SEVERITY[row.outcome] < SEVERITY.cap) row.outcome = "cap";
+      row.reason = row.reason ? `${row.reason}; ${COSTS_EXAMPLE}` : COSTS_EXAMPLE;
+    }
     row.name = def.name;
     rows[id] = row;
   }
@@ -556,6 +568,7 @@ export function evaluate(
     blockId: results.blockId ?? null,
     costs: results.costs ?? null,
     costsSha256: results.costsSha256 ?? null,
+    costsSource: results.costsExample ? "example (not your own)" : "own",
     ruleSheet: results.ruleSheet ?? null,
     variantsTried: results.variantsTried ?? null,
     verdict,
@@ -610,6 +623,7 @@ export function logLine(report) {
       costs: report.costs,
       costsSha256: report.costsSha256,
     },
+    costsSource: report.costsSource,
     ruleSheet: report.ruleSheet,
     confidence: report.checks.C1.metrics?.confidence ?? null,
     checks,
@@ -658,6 +672,11 @@ export function summary(report, thresholds) {
       ? `Costs: checks read ${report.costBasis.checkedRun} on the base cost scenario.`
       : `Costs: ${report.costBasis.reason}; verdict capped.`,
   );
+  if (report.costsSource !== "own") {
+    lines.push(
+      `⚠️ ${COSTS_EXAMPLE}: the skill's example scenario, not your own costs; C7 capped. Give your own cost file for a verdict on your costs.`,
+    );
+  }
   if (report.zeroCostFields.length > 0) {
     lines.push(
       `Zero cost fields: ${report.zeroCostFields.join(", ")} (explicit 0 in the cost file).`,

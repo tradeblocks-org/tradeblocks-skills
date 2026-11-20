@@ -66,6 +66,7 @@
   "costs": null,
   "costsSha256": null,
   "zeroCostFields": [],
+  "costsExample": false,
   "runSizes": {
     "A2-naive": 1,
     "A2-cost2x": 1,

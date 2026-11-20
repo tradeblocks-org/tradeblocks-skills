@@ -415,6 +415,8 @@ export function resultsFor(id, manifest, collected, tbVersion) {
     costs: null,
     costsSha256: manifest.costs_sha256 ?? null,
     zeroCostFields: manifest.zero_cost_fields ?? [],
+    // From the run request; the synthetic fixtures use their own costs.
+    costsExample: manifest.costs_example ?? false,
     runSizes,
     ...(exitMix ? { exitMix } : {}),
     ...(c4Coverage ? { c4Coverage } : {}),

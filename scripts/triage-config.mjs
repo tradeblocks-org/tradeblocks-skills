@@ -26,6 +26,7 @@ import {
   realpathSync,
 } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { dirname, join, resolve, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -124,8 +125,13 @@ export function readConfig(path) {
   const c = config.costs;
   if (!c || typeof c.base !== "string")
     fail("BAD_CONFIG", "costs.base (base scenario name) is required");
-  if (!c.file === !c.command)
-    fail("BAD_CONFIG", "give exactly one of costs.file or costs.command");
+  if ([c.file, c.command, c.example].filter(Boolean).length !== 1)
+    fail("BAD_CONFIG", "give exactly one of costs.file or costs.command (or costs.example, set by the first-run setup)");
+  if (c.example) {
+    if (typeof c.example.confirmedAt !== "string" || !SHA256.test(c.example.sha256 ?? ""))
+      fail("BAD_CONFIG", "costs.example is set but not confirmed (no confirmedAt and sha256): run the first-run setup and confirm the example values");
+    if (c.base !== EXAMPLE_NAME) fail("BAD_CONFIG", `costs.base must be "${EXAMPLE_NAME}" with costs.example`);
+  }
   if (c.command != null && !isArgv(c.command)) {
     fail("BAD_CONFIG", 'costs.command is an argv array, e.g. ["python3", "my_costs.py"]');
   }
@@ -140,6 +146,7 @@ export function readConfig(path) {
     costs: {
       file: c.file ? at(dir, c.file) : null,
       command: c.command ?? null,
+      example: c.example ? { ...c.example } : null,
       cwd: dir,
       base: c.base,
     },
@@ -190,7 +197,16 @@ function scenarioProblems(scenarios, name) {
  * shell; runs in the config file's folder).
  */
 export function loadScenarios(config) {
-  const scenarios = parseScenarios(scenarioText(config.costs));
+  const example = !!config.costs.example;
+  let scenarios;
+  if (example) {
+    const e = readExample();
+    if (e.sha256 !== config.costs.example.sha256)
+      fail("EXAMPLE_CHANGED", "the shipped example costs changed since you confirmed them: run the first-run setup and confirm them again, or give your own cost file");
+    scenarios = e.scenarios;
+  } else {
+    scenarios = parseScenarios(scenarioText(config.costs));
+  }
   const check = (name) => {
     const [p] = scenarioProblems(scenarios, name);
     if (p?.field === null) fail("BAD_COSTS", `scenario ${JSON.stringify(name)} not found`);
@@ -208,7 +224,39 @@ export function loadScenarios(config) {
     cost2x,
     baseName: config.costs.base,
     cost2xName: `${config.costs.base} x2 slippage`,
+    example,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Example costs (shipped, labelled; used only after explicit confirmation)
+// ---------------------------------------------------------------------------
+
+export const EXAMPLE_NAME = "example";
+export const EXAMPLE_PATH = join(templates, "costs-example.json");
+const SHA256 = /^[0-9a-f]{64}$/;
+
+/** sha256 of the five values in field order: identifies the example values. */
+export function exampleSha256(values) {
+  return createHash("sha256")
+    .update(JSON.stringify(Object.fromEntries(COST_FIELDS.map((f) => [f, values[f]]))))
+    .digest("hex");
+}
+
+/** The shipped example, checked against its own sha256. */
+export function readExample(path = EXAMPLE_PATH) {
+  let e;
+  try {
+    e = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    fail("EXAMPLE_INVALID", `${path}: ${error.message}`);
+  }
+  const problems = scenarioProblems(e.scenarios, EXAMPLE_NAME);
+  if (problems.length)
+    fail("EXAMPLE_INVALID", `scenario ${EXAMPLE_NAME}: ${problems.map((p) => p.field ?? "missing").join(", ")}`);
+  if (e.sha256 !== exampleSha256(e.scenarios[EXAMPLE_NAME]))
+    fail("EXAMPLE_INVALID", "the example values do not match their sha256");
+  return e;
 }
 
 /** The config with absolute paths, or status "setup" with the reason. */
@@ -241,6 +289,8 @@ export function resolveConfig(env = process.env) {
 const FIELD_HELP = JSON.parse(readFileSync(join(templates, "costs.json"), "utf8")).fields;
 
 const QUESTIONS = {
+  ownCosts:
+    "Do you have your own cost file (or a command that prints your cost scenarios)? true / false. Without one the skill can show its example scenario, used only if you confirm it.",
   "costs.source":
     'Where do the cost scenarios come from: an existing cost file in the format of templates/costs.json ({"source": "file", "file": <path>}), a command that prints that JSON from your own cost source ({"source": "command", "command": [argv]}), or a new cost file created now from the template ({"source": "new", "scenarios": {...}})?',
   "costs.file": "Path of your cost file (relative paths are relative to the config folder).",
@@ -274,8 +324,21 @@ export function setup(answers, env = process.env) {
   const ask = [];
   const need = (key, extra = {}) => ask.push({ key, question: QUESTIONS[key], ...extra });
 
-  const base = answers.base ?? existing?.costs?.base;
-  if (typeof base !== "string" || !base) need("base");
+  // Where the costs come from: the user's own source, or the shipped example
+  // after explicit confirmation (PRD rev 230); never a silent default.
+  const a = answers.costs;
+  const own = answers.ownCosts;
+  let mode;
+  if (a !== undefined || own === true) mode = "own";
+  else if (own === false) mode = answers.exampleConfirmed === false ? "own" : "example";
+  else if (existing?.costs) mode = existing.costs.example ? "keepExample" : "keep";
+  else mode = "askOwn";
+  if (mode === "askOwn") need("ownCosts");
+
+  const exampleMode = mode === "example" || mode === "keepExample";
+  const keptBase = existing?.costs?.example ? undefined : existing?.costs?.base;
+  const base = exampleMode ? EXAMPLE_NAME : (answers.base ?? keptBase);
+  if (mode !== "askOwn" && (typeof base !== "string" || !base)) need("base");
   const names = typeof base === "string" && base ? [base] : [];
 
   let costs = null; // what goes into the config
@@ -284,8 +347,25 @@ export function setup(answers, env = process.env) {
   const zeros = (scenarios) => {
     for (const f of COST_FIELDS) if (scenarios[base]?.[f] === 0) zeroCostFields.push(`base.${f}`);
   };
-  const a = answers.costs;
-  if (a === undefined && existing?.costs) {
+  if (mode === "askOwn") {
+    // asked above
+  } else if (mode === "keepExample") {
+    costs = { example: existing.costs.example };
+    readExample();
+  } else if (mode === "example") {
+    const e = readExample();
+    const values = e.scenarios[EXAMPLE_NAME];
+    if (answers.exampleConfirmed !== true) {
+      ask.push({
+        key: "exampleConfirmed",
+        question: `No own cost file: the skill ships an example scenario (${e.source}, exported ${e.exportedAt}): ${COST_FIELDS.map((f) => `${f} ${values[f]}`).join(", ")}. These are example costs, not your own: every summary and verdict-log entry then says "costs: example (not your own)" and C7 is capped. Use them? true / false (false: give your own costs).`,
+        values,
+      });
+    } else {
+      costs = { example: { confirmedAt: new Date().toISOString(), sha256: e.sha256 } };
+      zeros(e.scenarios);
+    }
+  } else if (mode === "keep") {
     costs = {
       file: existing.costs.file ? resolve(dir, existing.costs.file) : null,
       command: existing.costs.command ?? null,
@@ -320,7 +400,7 @@ export function setup(answers, env = process.env) {
     need("costs.source");
   }
   // An existing cost source is only read, never written: a gap is fixed there.
-  if (costs && !newCostFile && names.length) {
+  if (costs && !costs.example && !newCostFile && names.length) {
     const where = costs.file ?? costs.command.join(" ");
     let scenarios;
     try {
@@ -365,8 +445,9 @@ export function setup(answers, env = process.env) {
       "Local config of is-this-backtest-lambo-or-lada (first-run setup). Relative paths resolve against this file's folder; commands run there.",
     costs: {
       file: storedPath(costs.file, dir),
-      command: costs.command,
+      command: costs.command ?? null,
       base,
+      ...(costs.example ? { example: costs.example } : {}),
     },
     thresholds: pick("thresholds"),
     verdictLog: pick("verdictLog", "verdicts.jsonl"),
@@ -402,6 +483,7 @@ export function setup(answers, env = process.env) {
     zeroCostFields,
     defaults,
     removed,
+    costsExample: !!costs.example,
   };
 }
 

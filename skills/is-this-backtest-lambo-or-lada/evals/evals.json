@@ -90,5 +90,18 @@
       "Asks whether a plug-in exists for source -> Option Omega and for running the run request, and stores the answer",
       "Writes no run request while a required cost field is still missing; without a plug-in later prints the runs to build in the Option Omega web UI"
     ]
+  },
+  {
+    "skills": [
+      "is-this-backtest-lambo-or-lada"
+    ],
+    "query": "I just want to try this on the backtest in block demo-pcs. I don't have any cost file, just use whatever.",
+    "expected_behavior": [
+      "Runs the first-run setup and answers ownCosts false only because the user said they have no cost file",
+      "Shows the example cost values word for word with the warning that they are not the user's costs, and asks for an explicit yes; does not treat \"just use whatever\" as a reason to skip showing them",
+      "Writes the config only after the user confirms the example, never confirms it on the user's behalf",
+      "Puts costsExample true from the run request into check-results.json; the summary says \"costs: example (not your own)\" and C7 is capped",
+      "Suggests giving an own cost file for a verdict on the user's own costs"
+    ]
   }
 ]

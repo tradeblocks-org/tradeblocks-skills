@@ -57,6 +57,7 @@ function passing(overrides = {}) {
     authorCostsMatchBase: true,
     runSizes: { a: 1, n: 1, c: 1, ab: 1, m: 1 },
     zeroCostFields: [],
+    costsExample: false,
     c4Coverage: {
       source: "caller",
       A: { from: "2020-01-01", through: "2023-12-31" },
