@@ -1,5 +1,5 @@
 {
-  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2 + #639-#642 + grid fix, unreleased and read with the TradeBlocks calls in SKILL.md (scripts/triage-collect.mjs).",
+  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2 + #639-#642 + #648, unreleased and read with the TradeBlocks calls in SKILL.md (scripts/triage-collect.mjs).",
   "case": "A1",
   "runAt": "2026-11-19T00:00:00Z",
   "source": null,
@@ -96,7 +96,7 @@
     "C3": {
       "metrics": {
         "maxYearDteMismatchShare": 0,
-        "missingRuleDayShare": 0.005988023952095809
+        "missingRuleDayShare": 0
       }
     },
     "C4": {
@@ -127,7 +127,7 @@
     }
   },
   "versions": {
-    "tradeblocks": "4.6.2 + #639-#642 + grid fix, unreleased"
+    "tradeblocks": "4.6.2 + #639-#642 + #648, unreleased"
   },
   "ooRunIds": [],
   "runFolder": null
