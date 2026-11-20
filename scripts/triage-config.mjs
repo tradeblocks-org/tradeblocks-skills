@@ -369,7 +369,8 @@ export function setup(answers, env = process.env) {
   mkdirSync(dir, { recursive: true });
   let backup;
   if (loc.exists) {
-    backup = `${loc.path}.bak-${stamp()}`;
+    // Next to the real file, so a symlinked config keeps its backup beside it.
+    backup = `${realpathSync(loc.path)}.bak-${stamp()}`;
     copyFileSync(loc.path, backup);
   }
   if (newCostFile) {

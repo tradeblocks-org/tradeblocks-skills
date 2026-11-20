@@ -7,6 +7,7 @@ import {
   readFileSync,
   existsSync,
   symlinkSync,
+  realpathSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -340,4 +341,22 @@ test("CLI: resolve prints absolute paths; setup reads answers from a file", () =
   assert.equal(r.verdictLog, join(dir, "verdicts.jsonl"));
   assert.equal(r.runRoot, join(dir, "runs"));
   assert.equal(r.costs.file, join(dir, "costs.json"));
+});
+
+test("setup through a symlinked config writes the real file and backs it up next to it", () => {
+  const dir = tmp();
+  write(join(dir, "real", "costs.json"), { scenarios: { b: BASE } });
+  const realCfg = write(join(dir, "real", "local-config.json"), {
+    costs: { file: "costs.json", base: "b" },
+    verdictLog: "v.jsonl",
+    runRoot: "r",
+  });
+  const link = join(dir, "home", ".config", "x", "local-config.json");
+  mkdirSync(dirname(link), { recursive: true });
+  symlinkSync(realCfg, link);
+  const r = setup({ plugin: { exists: false } }, { HOME: dir, TRIAGE_CONFIG: link });
+  assert.equal(r.status, "written");
+  assert.equal(dirname(r.backup), join(dir, "real"));
+  assert.deepEqual(JSON.parse(readFileSync(realCfg, "utf8")).plugin, { exists: false });
+  assert.equal(realpathSync(link), realCfg, "the symlink stays a symlink");
 });
