@@ -630,3 +630,83 @@ test("rev214 B2: the frozen cases A1-A5 carry each run's range and were collecte
     if (r.checks.C4?.metrics) assert.equal(r.c4Coverage?.source, "caller", id);
   }
 });
+
+test("rev214 N1: the fixture generator emits no close after rangeEnd (Option Omega leaves an open trade out)", async () => {
+  const { generate } = await import("../scripts/triage-fixtures.mjs");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "triage-n1-"));
+  generate(dir);
+  for (const id of ["A1", "A2", "A3", "A4", "A5"]) {
+    const m = JSON.parse(readFileSync(join(dir, id, "triage.json"), "utf8"));
+    const closes = readFileSync(join(dir, id, "tradelog.csv"), "utf8")
+      .trim()
+      .split("\n")
+      .slice(1)
+      .map((l) => l.split(",")[2]);
+    assert.ok(closes.length > 0, id);
+    for (const c of closes) assert.ok(c <= m.oo_settings.rangeEnd, `${id} closes ${c}`);
+  }
+});
+
+test("rev214 N1: one 'Backtest Completed' exit per run is neutral in the exit mix; a second counts as other", () => {
+  const one = based({
+    exitMix: {
+      author: { Expired: 5 },
+      authorBase: { Expired: 4, "Backtest Completed": 1 },
+    },
+  });
+  assert.equal(evaluate(one, thresholds).exitMix.status, "same");
+  const two = based({
+    exitMix: {
+      author: { Expired: 5 },
+      authorBase: { Expired: 3, "Backtest Completed": 2 },
+    },
+  });
+  const report = evaluate(two, thresholds);
+  assert.equal(report.exitMix.status, "changed");
+  assert.equal(report.exitMix.authorBase.other, 1);
+});
+
+test("rev214 N1: a TradeBlocks refusal in C4 makes C4 not run with TradeBlocks' message", async () => {
+  const refusal =
+    'Strategy "a" has a trade opened 2025-12-29, closed 2026-01-05, outside its coverage 2022-06-06 to 2025-12-29.';
+  const stats = {
+    stats: { totalTrades: 200, netPl: 1000 },
+    plWithoutBestDays: [1, 5, 10].map((n) => ({ n, pl: 500, shareOfTotal: 0.1 })),
+    positiveYearShare: 1,
+  };
+  const tb = {
+    async call(name) {
+      if (name === "paired_bootstrap_comparison")
+        throw new Error(`TOOL_ERROR: paired_bootstrap_comparison: ${refusal}`);
+      if (name === "run_sql") return { rows: [{ strategy: "a", n: 1 }] };
+      if (name === "get_statistics") return stats;
+      if (name === "get_period_returns") return { periods: [{ period: "2022-06" }, { period: "2025-12" }] };
+      if (name === "get_rule_calendar")
+        return { missingRuleDays: { share: 0 }, dte: { maxYearMismatchShare: 0 } };
+      if (name === "stress_test") return { scenarios: [] };
+      throw new Error(`unexpected ${name}`);
+    },
+  };
+  const { collectCase } = await import("../scripts/triage-collect.mjs");
+  const manifest = {
+    block_id: "b",
+    runs: { author: "a", naive: "n" },
+    oo_settings: { entryFilters: [], rangeStart: "2022-06-06", rangeEnd: "2025-12-29" },
+    run_ranges: {
+      author: { from: "2022-06-06", through: "2025-12-29" },
+      naive: { from: "2022-06-06", through: "2025-12-29" },
+    },
+  };
+  const t = JSON.parse(readFileSync(join(here, "..", "skills", "is-this-backtest-lambo-or-lada", "thresholds.json"), "utf8"));
+  const { checks, c4Coverage } = await collectCase(tb, manifest, t);
+  assert.equal(checks.C4.notRun, `TradeBlocks refused the comparison: ${refusal}`);
+  assert.equal(c4Coverage, undefined);
+
+  const transport = { ...tb, async call(name, a) {
+    if (name === "paired_bootstrap_comparison") throw new Error("MCP_ERROR: tools/call: {}");
+    return tb.call(name, a);
+  } };
+  await assert.rejects(collectCase(transport, manifest, t), /^Error: MCP_ERROR/);
+});

@@ -454,7 +454,14 @@ function controlCase(
 export function generate(outDir) {
   const written = [];
   for (const [id, build] of Object.entries(CASES)) {
-    const { rows, manifest: m, expect } = build();
+    const built = build();
+    const { manifest: m, expect } = built;
+    // Option Omega never reports a close after rangeEnd: a position still open
+    // at the end is left out of the trade log (closeOpenTradesAtTestCompletion
+    // false). Drop such trades the same way.
+    const rows = built.rows.filter(
+      (r) => r.split(",")[2] <= m.oo_settings.rangeEnd,
+    );
     const dir = join(outDir, id);
     mkdirSync(dir, { recursive: true });
     writeFileSync(

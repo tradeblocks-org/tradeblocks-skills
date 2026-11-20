@@ -1,5 +1,5 @@
 {
-  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2 + tradeblocks#639-#642 (unreleased) and read with the TradeBlocks calls in SKILL.md (scripts/triage-collect.mjs).",
+  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2 + #639-#642 + grid fix, unreleased and read with the TradeBlocks calls in SKILL.md (scripts/triage-collect.mjs).",
   "case": "A3",
   "runAt": "2026-11-19T00:00:00Z",
   "source": {
@@ -74,34 +74,45 @@
     "A3-naive": 1,
     "A3-cost2x": 1
   },
+  "c4Coverage": {
+    "source": "caller",
+    "A": {
+      "from": "2022-06-06",
+      "through": "2025-12-29"
+    },
+    "B": {
+      "from": "2022-06-06",
+      "through": "2025-12-29"
+    }
+  },
   "variantsTried": 1,
   "authorUsesIntraMinuteStops": false,
   "authorCostsMatchBase": true,
   "checks": {
     "C2": {
       "metrics": {
-        "trades": 127,
-        "months": 44,
+        "trades": 126,
+        "months": 43,
         "distinctContractCounts": 1
       }
     },
     "C3": {
       "metrics": {
         "maxYearDteMismatchShare": 0,
-        "missingRuleDayShare": 0
+        "missingRuleDayShare": 0.005988023952095809
       }
     },
     "C4": {
       "metrics": {
-        "point": 13.793620501635768,
-        "ciLow": 10.637598137041074,
-        "ciHigh": 16.977095756088715
+        "point": 13.854052573932092,
+        "ciLow": 10.80270319459658,
+        "ciHigh": 16.93355317634172
       }
     },
     "C5": {
       "metrics": {
-        "plWithoutBest5": 6695.529999999998,
-        "best10Share": 0.2201462591610626,
+        "plWithoutBest5": 6582.329999999998,
+        "best10Share": 0.2234967960870045,
         "positiveYearShare": 1
       }
     },
@@ -113,13 +124,13 @@
     },
     "C7": {
       "metrics": {
-        "cost2xPl": 6280.979999999998,
-        "cost2xKeepShare": 0.8318099107665494
+        "cost2xPl": 6177.779999999998,
+        "cost2xKeepShare": 0.8305946129086904
       }
     }
   },
   "versions": {
-    "tradeblocks": "4.6.2 + tradeblocks#639-#642 (unreleased)"
+    "tradeblocks": "4.6.2 + #639-#642 + grid fix, unreleased"
   },
   "ooRunIds": [],
   "runFolder": null

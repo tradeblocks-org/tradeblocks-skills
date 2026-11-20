@@ -223,9 +223,16 @@ const EXIT_CLASSES = [
   ["expiry", /expir/i],
   ["time", /time|dte|dit|mit/i],
 ];
+// Option Omega closes a position still open at the end of the range as
+// "Backtest Completed" (closeOpenTradesAtTestCompletion). One such exit per
+// run is the end of the test, not a trading decision: it is left out of the
+// mix. Any further one counts as "other".
+const END_OF_TEST = /backtest completed/i;
+
 /** Exit-reason counts by class (profit target, stop, expiry, time, other). */
 function exitClasses(counts) {
   const out = { profit_target: 0, stop: 0, expiry: 0, time: 0, other: 0 };
+  let endOfTestLeft = 1;
   for (const [reason, n] of Object.entries(counts)) {
     if (typeof n !== "number" || !Number.isFinite(n) || n < 0) {
       fail(
@@ -233,8 +240,14 @@ function exitClasses(counts) {
         `exit-reason count for ${JSON.stringify(reason)} must be a number`,
       );
     }
+    let count = n;
+    if (END_OF_TEST.test(reason)) {
+      const neutral = Math.min(count, endOfTestLeft);
+      endOfTestLeft -= neutral;
+      count -= neutral;
+    }
     const cls = EXIT_CLASSES.find(([, re]) => re.test(reason))?.[0] ?? "other";
-    out[cls] += n;
+    out[cls] += count;
   }
   return out;
 }

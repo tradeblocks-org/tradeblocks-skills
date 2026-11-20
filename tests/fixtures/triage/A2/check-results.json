@@ -1,5 +1,5 @@
 {
-  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2 + tradeblocks#639-#642 (unreleased) and read with the TradeBlocks calls in SKILL.md (scripts/triage-collect.mjs).",
+  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2 + #639-#642 + grid fix, unreleased and read with the TradeBlocks calls in SKILL.md (scripts/triage-collect.mjs).",
   "case": "A2",
   "runAt": "2026-11-19T00:00:00Z",
   "source": null,
@@ -71,52 +71,63 @@
     "A2-cost2x": 1,
     "A2-author": 1
   },
+  "c4Coverage": {
+    "source": "caller",
+    "A": {
+      "from": "2022-06-06",
+      "through": "2025-12-29"
+    },
+    "B": {
+      "from": "2022-06-06",
+      "through": "2025-12-29"
+    }
+  },
   "variantsTried": 1,
   "authorUsesIntraMinuteStops": false,
   "authorCostsMatchBase": true,
   "checks": {
     "C2": {
       "metrics": {
-        "trades": 82,
-        "months": 43,
+        "trades": 81,
+        "months": 42,
         "distinctContractCounts": 1
       }
     },
     "C3": {
       "metrics": {
         "maxYearDteMismatchShare": 0,
-        "missingRuleDayShare": 0
+        "missingRuleDayShare": 0.005988023952095809
       }
     },
     "C4": {
       "metrics": {
-        "point": -3.3330861504907245,
-        "ciLow": -6.204149218466011,
-        "ciHigh": -0.5047762904398415
+        "point": -3.3476889375684498,
+        "ciLow": -6.112268346111718,
+        "ciHigh": -0.27405981197517576
       }
     },
     "C5": {
       "metrics": {
-        "plWithoutBest5": -173.37000000000035,
-        "best10Share": 2.5003309171131436,
-        "positiveYearShare": 0.8
+        "plWithoutBest5": -289.3000000000003,
+        "best10Share": 3.0591898509649695,
+        "positiveYearShare": 0.75
       }
     },
     "C6": {
       "metrics": {
         "stressPeriodsInRecord": 3,
-        "worstStressLossInAvgMonths": 13.65958083832336
+        "worstStressLossInAvgMonths": 16.324021053849275
       }
     },
     "C7": {
       "metrics": {
-        "cost2xPl": -185.40000000000015,
-        "cost2xKeepShare": -0.29215253703120114
+        "cost2xPl": -291.33000000000015,
+        "cost2xKeepShare": -0.5616866215512759
       }
     }
   },
   "versions": {
-    "tradeblocks": "4.6.2 + tradeblocks#639-#642 (unreleased)"
+    "tradeblocks": "4.6.2 + #639-#642 + grid fix, unreleased"
   },
   "ooRunIds": [],
   "runFolder": null

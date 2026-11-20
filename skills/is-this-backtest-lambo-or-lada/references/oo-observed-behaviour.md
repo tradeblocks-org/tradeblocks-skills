@@ -26,6 +26,14 @@ In years without weekly or daily expiries a stated DTE is therefore often not wh
 
 TradeBlocks has no per-day listing of available expiries, so it cannot say which expiry should have been taken on a given day; the rule calendar reports the DTE that was actually traded per year.
 
+## End of the backtest range
+
+Option Omega never reports a close after `rangeEnd` (observed: 7 DTE SPX put spread, entry on the Monday that is `rangeEnd`, expiry a week later):
+- `closeOpenTradesAtTestCompletion: false`: the entry on `rangeEnd` is opened but left open. It is **not** in the trade log; the result reports it only as `numberOfOpenTrades`.
+- `closeOpenTradesAtTestCompletion: true`: the same entry is closed **on** `rangeEnd` with `reasonClosed: "Backtest Completed"`, closing fees and exit costs charged.
+
+Consequence for C4: every trade of a run closes inside its own range, so the range is the run's coverage and a TradeBlocks refusal for a trade outside it means the block does not match the ranges (C4 not run). For the exit-mix guard one "Backtest Completed" exit per run is the end of the test, not a trading decision, and is left out; any further one counts as "other". The synthetic fixtures follow the first behaviour.
+
 ## Intra-minute stops
 
 The setting is `exitConditions[].useIntraMinuteStop` (one boolean per exit group). Option Omega honours it only for SPX and SPY and only while every leg of that exit group is 0 DTE. C8 applies when any group has it `true` and those conditions hold; the `minute_stop` run sets it `false` in every group.

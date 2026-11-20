@@ -282,21 +282,34 @@ export async function collectCase(tb, manifest, thresholds) {
   // C4
   if (naive) {
     const coverage = c4CoverageArgs(manifest);
-    const pb = await tb.call("paired_bootstrap_comparison", {
-      blockId: block,
-      strategyA: author,
-      strategyB: naive,
-      unobservedDays: "zero",
-      grid: "xnys",
-      ...(coverage ? { coverage } : {}),
-      seed: thresholds.bootstrap.seed,
-      resamples: thresholds.bootstrap.resamples,
-      ciLevel: thresholds.bootstrap.ciLevel,
-    });
-    checks.C4 = {
-      metrics: { point: pb.point, ciLow: pb.ci.low, ciHigh: pb.ci.high },
-    };
-    if (pb.coverageSource) {
+    // A refusal by the tool (e.g. a trade outside its run's coverage) means C4
+    // could not run: record TradeBlocks' message instead of aborting.
+    const prefix = "TOOL_ERROR: paired_bootstrap_comparison: ";
+    const pb = await tb
+      .call("paired_bootstrap_comparison", {
+        blockId: block,
+        strategyA: author,
+        strategyB: naive,
+        unobservedDays: "zero",
+        grid: "xnys",
+        ...(coverage ? { coverage } : {}),
+        seed: thresholds.bootstrap.seed,
+        resamples: thresholds.bootstrap.resamples,
+        ciLevel: thresholds.bootstrap.ciLevel,
+      })
+      .catch((error) => {
+        if (!error.message.startsWith(prefix)) throw error;
+        checks.C4 = {
+          notRun: `TradeBlocks refused the comparison: ${error.message.slice(prefix.length)}`,
+        };
+        return null;
+      });
+    if (pb) {
+      checks.C4 = {
+        metrics: { point: pb.point, ciLow: pb.ci.low, ciHigh: pb.ci.high },
+      };
+    }
+    if (pb?.coverageSource) {
       c4Coverage = {
         source: pb.coverageSource,
         ...(pb.coverage?.A ? { A: pb.coverage.A } : {}),
