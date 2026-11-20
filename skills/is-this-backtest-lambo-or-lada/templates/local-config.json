@@ -3,13 +3,14 @@
   "costs": {
     "file": "<path to your cost file in the format of templates/costs.json (Option Omega units)>",
     "command": null,
-    "base": "<name of the base scenario>",
-    "cost2x": null
+    "base": "<name of the base scenario>"
   },
   "thresholds": null,
   "verdictLog": "verdicts.jsonl",
   "runRoot": "runs",
   "protocolHook": null,
-  "plugin": { "exists": false },
-  "notes": "Relative paths resolve against this file's folder (after following a symlink); commands run in that folder. costs: give either file or command (argv array that prints the same JSON, e.g. a converter from your own cost file). cost2x: a named scenario, or null for base slippage x 2. thresholds: path of your copy of thresholds.json, or null for the default. protocolHook: argv array called with the run folder as last argument, or null. plugin: {\"exists\": false}, or {\"exists\": true, \"name\": ..., \"roles\": [\"source\", \"runRequest\"] (the ones it does), \"skill\": <skill name> or \"command\": [argv]}; with role runRequest the run request is handed to it."
+  "plugin": {
+    "exists": false
+  },
+  "notes": "Relative paths resolve against this file's folder (after following a symlink); commands run in that folder. costs: give either file or command (argv array that prints the same JSON, e.g. a converter from your own cost file). base: the only scenario named here; the cost_2x run is always base entry, exit and stop slippage x 2 with base fees, computed by the skill. thresholds: path of your copy of thresholds.json, or null for the default. protocolHook: argv array called with the run folder as last argument, or null. plugin: {\"exists\": false}, or {\"exists\": true, \"name\": ..., \"roles\": [\"source\", \"runRequest\"] (the ones it does), \"skill\": <skill name> or \"command\": [argv]}; with role runRequest the run request is handed to it."
 }

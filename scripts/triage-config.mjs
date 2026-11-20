@@ -50,6 +50,12 @@ function fail(reason, detail) {
   throw new Error(`${reason}: ${detail}`);
 }
 
+// PRD rev 226: the config names only the base costs; a 2x scenario is never read.
+const COST2X_REMOVED =
+  "costs.cost2x was removed: cost_2x is always computed from the base scenario (entry, exit and stop slippage x 2, base fees); delete the key (the first-run setup drops it)";
+const hasCost2x = (config) =>
+  !!config?.costs && Object.prototype.hasOwnProperty.call(config.costs, "cost2x");
+
 const round = (x) => Math.round(x * 1e6) / 1e6;
 const isCost = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
 const isArgv = (v) =>
@@ -113,6 +119,7 @@ export function readConfig(path) {
   } catch (error) {
     fail("BAD_CONFIG", `${path}: ${error.message}`);
   }
+  if (hasCost2x(config)) fail("REMOVED_FIELD", COST2X_REMOVED);
   const dir = baseDir(path);
   const c = config.costs;
   if (!c || typeof c.base !== "string")
@@ -135,7 +142,6 @@ export function readConfig(path) {
       command: c.command ?? null,
       cwd: dir,
       base: c.base,
-      cost2x: c.cost2x ?? null,
     },
     thresholds: at(dir, config.thresholds),
     verdictLog: at(dir, config.verdictLog),
@@ -192,17 +198,16 @@ export function loadScenarios(config) {
     return Object.fromEntries(COST_FIELDS.map((f) => [f, scenarios[name][f]]));
   };
   const base = check(config.costs.base);
-  const cost2x = config.costs.cost2x
-    ? check(config.costs.cost2x)
-    : {
-        ...base,
-        ...Object.fromEntries(SLIPPAGE_FIELDS.map((f) => [f, round(base[f] * 2)])),
-      };
+  // cost_2x: base slippage x 2, base fees; never a scenario of its own.
+  const cost2x = {
+    ...base,
+    ...Object.fromEntries(SLIPPAGE_FIELDS.map((f) => [f, round(base[f] * 2)])),
+  };
   return {
     base,
     cost2x,
     baseName: config.costs.base,
-    cost2xName: config.costs.cost2x ?? `${config.costs.base} x2 slippage`,
+    cost2xName: `${config.costs.base} x2 slippage`,
   };
 }
 
@@ -212,6 +217,13 @@ export function resolveConfig(env = process.env) {
   const head = { configPath: loc.path, configSource: loc.source };
   if (!loc.exists)
     return { status: "setup", ...head, reason: `no local config at ${loc.path}` };
+  let raw;
+  try {
+    raw = JSON.parse(readFileSync(loc.path, "utf8"));
+  } catch (error) {
+    fail("BAD_CONFIG", `${loc.path}: ${error.message}`);
+  }
+  if (hasCost2x(raw)) return { status: "setup", ...head, reason: COST2X_REMOVED };
   const c = readConfig(loc.path);
   if (c.plugin === null)
     return { status: "setup", ...head, reason: `plug-in not answered in ${loc.path}` };
@@ -249,7 +261,7 @@ const stamp = () => new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
 
 /**
  * First-run setup. `answers` holds what the user has said so far (keys as in
- * QUESTIONS; `cost2x`, `verdictLog`, `runRoot`, `thresholds`, `protocolHook`
+ * QUESTIONS; `verdictLog`, `runRoot`, `thresholds`, `protocolHook`
  * optional). An existing config is the starting point; only what is missing
  * is asked.
  */
@@ -257,22 +269,20 @@ export function setup(answers, env = process.env) {
   const loc = locateConfig(env);
   const existing = loc.exists ? JSON.parse(readFileSync(loc.path, "utf8")) : null;
   const dir = loc.exists ? baseDir(loc.path) : dirname(loc.path);
+  if (answers.cost2x !== undefined) fail("REMOVED_FIELD", COST2X_REMOVED);
+  const removed = hasCost2x(existing) ? ["costs.cost2x"] : [];
   const ask = [];
   const need = (key, extra = {}) => ask.push({ key, question: QUESTIONS[key], ...extra });
 
   const base = answers.base ?? existing?.costs?.base;
   if (typeof base !== "string" || !base) need("base");
-  const cost2x = answers.cost2x !== undefined ? answers.cost2x : (existing?.costs?.cost2x ?? null);
-  const names = [base, cost2x].filter((n) => typeof n === "string" && n);
+  const names = typeof base === "string" && base ? [base] : [];
 
   let costs = null; // what goes into the config
   let newCostFile = null; // {path, scenarios} when the setup creates the cost file
   const zeroCostFields = [];
   const zeros = (scenarios) => {
-    for (const [name, label] of [[base, "base"], [cost2x, "cost2x"]]) {
-      if (!name) continue;
-      for (const f of COST_FIELDS) if (scenarios[name]?.[f] === 0) zeroCostFields.push(`${label}.${f}`);
-    }
+    for (const f of COST_FIELDS) if (scenarios[base]?.[f] === 0) zeroCostFields.push(`base.${f}`);
   };
   const a = answers.costs;
   if (a === undefined && existing?.costs) {
@@ -357,7 +367,6 @@ export function setup(answers, env = process.env) {
       file: storedPath(costs.file, dir),
       command: costs.command,
       base,
-      cost2x,
     },
     thresholds: pick("thresholds"),
     verdictLog: pick("verdictLog", "verdicts.jsonl"),
@@ -392,6 +401,7 @@ export function setup(answers, env = process.env) {
     ...(newCostFile ? { costFile: newCostFile.path } : {}),
     zeroCostFields,
     defaults,
+    removed,
   };
 }
 

@@ -290,7 +290,7 @@ test("an existing config without a plug-in answer asks only for it and keeps eve
   const home = tmp();
   write(join(home, "cfg", "costs.json"), { scenarios: { b: BASE } });
   const cfg = write(join(home, "cfg", "local-config.json"), {
-    costs: { file: "costs.json", command: null, base: "b", cost2x: null },
+    costs: { file: "costs.json", command: null, base: "b" },
     thresholds: null,
     verdictLog: "v.jsonl",
     runRoot: "r",
@@ -359,4 +359,47 @@ test("setup through a symlinked config writes the real file and backs it up next
   assert.equal(dirname(r.backup), join(dir, "real"));
   assert.deepEqual(JSON.parse(readFileSync(realCfg, "utf8")).plugin, { exists: false });
   assert.equal(realpathSync(link), realCfg, "the symlink stays a symlink");
+});
+
+test("rev226: setup asks no 2x question and refuses a cost2x answer", () => {
+  const home = tmp();
+  const r = setup({ costs: { source: "new", scenarios: {} }, base: "b", plugin: { exists: false } }, { HOME: home });
+  assert.equal(r.status, "ask");
+  assert.ok(keys(r).every((k) => k.startsWith("costs.scenarios.b.")), keys(r).join());
+  assert.ok(!JSON.stringify(r).includes("2x"));
+  assert.throws(
+    () => setup({ costs: { source: "new", scenarios: { b: BASE } }, base: "b", cost2x: "s", plugin: { exists: false } }, { HOME: home }),
+    /^Error: REMOVED_FIELD: costs\.cost2x/,
+  );
+  setup({ costs: { source: "new", scenarios: { b: BASE } }, base: "b", plugin: { exists: false } }, { HOME: home });
+  const raw = JSON.parse(readFileSync(defaultConfigPath({ HOME: home }), "utf8"));
+  assert.equal("cost2x" in raw.costs, false);
+});
+
+test("rev226: a config with cost2x resolves to setup with the removal message; setup drops the key", () => {
+  const dir = tmp();
+  write(join(dir, "real", "costs.json"), { scenarios: { b: BASE } });
+  const realCfg = write(join(dir, "real", "local-config.json"), {
+    costs: { file: "costs.json", command: null, base: "b", cost2x: null },
+    verdictLog: "v.jsonl",
+    runRoot: "r",
+    plugin: { exists: false },
+  });
+  const link = join(dir, "home", ".config", "x", "local-config.json");
+  mkdirSync(dirname(link), { recursive: true });
+  symlinkSync(realCfg, link);
+  const env = { HOME: dir, TRIAGE_CONFIG: link };
+  const before = resolveConfig(env);
+  assert.equal(before.status, "setup");
+  assert.match(before.reason, /costs\.cost2x was removed/);
+  const s = write(join(dir, "settings.json"), SETTINGS);
+  assert.throws(() => main(["--settings", s, "--author-label", "X"], env), /^Error: SETUP_NEEDED: costs\.cost2x was removed/);
+  const r = setup({}, env);
+  assert.equal(r.status, "written");
+  assert.deepEqual(r.removed, ["costs.cost2x"]);
+  assert.equal(dirname(r.backup), join(dir, "real"));
+  const raw = JSON.parse(readFileSync(realCfg, "utf8"));
+  assert.equal("cost2x" in raw.costs, false);
+  assert.equal(raw.costs.base, "b");
+  assert.equal(resolveConfig(env).status, "ready");
 });

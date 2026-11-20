@@ -157,13 +157,29 @@ test("author on the base costs: no author_base; roles the manifest has are not r
   );
 });
 
-test("a named cost2x scenario replaces base x 2", () => {
-  const { configPath } = setup({ cost2x: "stress" });
+test("rev226: cost_2x is always base slippage x 2 with base fees", () => {
+  const { configPath } = setup();
   const sc = loadScenarios(readConfig(configPath));
-  const c2 = runRequest(settings(), sc, "X").runs.find(
-    (r) => r.role === "cost_2x",
-  );
-  assert.deepEqual(c2.set, COSTS.scenarios.stress);
+  const b = COSTS.scenarios.base;
+  assert.deepEqual(sc.cost2x, {
+    entrySlippage: b.entrySlippage * 2,
+    exitSlippage: b.exitSlippage * 2,
+    stopLossSlippage: b.stopLossSlippage * 2,
+    openingFees: b.openingFees,
+    closingFees: b.closingFees,
+  });
+  assert.equal(sc.cost2xName, "base x2 slippage");
+});
+
+test("rev226: a config that still names costs.cost2x is refused (field removed)", () => {
+  for (const value of ["stress", null]) {
+    const { configPath } = setup({ cost2x: value });
+    assert.throws(
+      () => readConfig(configPath),
+      /^Error: REMOVED_FIELD: costs\.cost2x was removed: cost_2x is always computed from the base scenario/,
+      String(value),
+    );
+  }
 });
 
 test("intra-minute stops count only for SPX/SPY with every leg at 0 DTE", () => {

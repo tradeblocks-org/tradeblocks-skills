@@ -33,7 +33,7 @@ A text field the script does not know cannot be switched off safely; it is kept 
 
 ## cost_2x (always; feeds C7)
 
-The author's rules with the base scenario's slippage × 2 (`entrySlippage`, `exitSlippage`, `stopLossSlippage`), base fees. If the local config names a 2x scenario (`costs.cost2x`), that scenario is used instead.
+The author's rules with the base scenario's slippage × 2 (`entrySlippage`, `exitSlippage`, `stopLossSlippage`), base fees, always computed by the script from the base scenario; the local config names no 2x scenario (a leftover `costs.cost2x` is refused with a message that the field was removed). `zeroCostFields` entries `cost2x.<field>` refer to these computed values.
 
 ## minute_stop (only when Option Omega honours the author's intra-minute stops; feeds C8)
 
