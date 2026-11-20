@@ -26,6 +26,10 @@
     "cost_2x": "<label, or remove until the run exists>",
     "minute_stop": "<label; only when the run request asks for it>"
   },
+  "capture_ids": {
+    "author": "<oo-capture capture id of this run; null when the run has none, e.g. a CSV import>",
+    "naive": "<capture id of this run, or null>"
+  },
   "oo_settings": {
     "useExactDte": false,
     "entryDays": ["Monday"],

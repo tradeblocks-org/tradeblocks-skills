@@ -133,6 +133,10 @@
   "versions": {
     "tradeblocks": "4.6.2 + #639-#642 + #648, unreleased"
   },
-  "ooRunIds": [],
+  "captureIds": {
+    "author": null,
+    "naive": null,
+    "cost_2x": null
+  },
   "runFolder": null
 }

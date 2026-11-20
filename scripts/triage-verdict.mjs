@@ -338,6 +338,36 @@ export function evaluate(
       "costsExample (from the run request) is required: true when the costs are the shipped example",
     );
   }
+  // A run's identity is its capture id. ooRunIds held Option Omega slot ids
+  // (reused across runs), so it is refused instead of mapped.
+  if ("ooRunIds" in results) {
+    fail(
+      "REMOVED_FIELD",
+      "ooRunIds is gone (it held Option Omega slot ids, not run ids); write captureIds instead: per run role the capture id from triage.json capture_ids, null for a role without one",
+    );
+  }
+  const caps = results.captureIds;
+  if (!caps || typeof caps !== "object" || Array.isArray(caps)) {
+    fail(
+      "BAD_RESULTS",
+      "captureIds is required: per run role the capture id from triage.json capture_ids, null for a role without one",
+    );
+  }
+  const roles = Object.keys(runs).filter((r) => runs[r] !== undefined && runs[r] !== null);
+  const missing = roles.filter((r) => !(r in caps));
+  const extra = Object.keys(caps).filter((r) => !roles.includes(r));
+  const badIds = Object.entries(caps)
+    .filter(([, v]) => v !== null && (typeof v !== "string" || v === ""))
+    .map(([r]) => r);
+  if (missing.length || extra.length || badIds.length) {
+    fail(
+      "BAD_RESULTS",
+      `captureIds must name exactly the run roles, each a capture id or null` +
+        (missing.length ? `; missing: ${missing.join(", ")}` : "") +
+        (extra.length ? `; not a run role: ${extra.join(", ")}` : "") +
+        (badIds.length ? `; not a capture id: ${badIds.join(", ")}` : ""),
+    );
+  }
   // One label per role: a run reused for two roles would compare it with itself.
   const labels = Object.values(runs).filter(
     (v) => v !== undefined && v !== null,
@@ -589,7 +619,7 @@ export function evaluate(
       skill: SKILL_VERSION,
       verdictScriptSha256: SCRIPT_SHA256,
     },
-    ooRunIds: results.ooRunIds ?? [],
+    captureIds: results.captureIds,
     runFolder: results.runFolder ?? null,
   };
 }
@@ -638,7 +668,7 @@ export function logLine(report) {
     thresholdsVersion: report.thresholdsVersion,
     thresholdsSha256: report.thresholdsSha256,
     versions: report.versions,
-    ooRunIds: report.ooRunIds,
+    captureIds: report.captureIds,
     runFolder: report.runFolder,
   });
 }
@@ -675,6 +705,14 @@ export function summary(report, thresholds) {
   if (report.costsSource !== "own") {
     lines.push(
       `⚠️ ${COSTS_EXAMPLE}: the skill's example scenario, not your own costs; C7 capped. Give your own cost file for a verdict on your costs.`,
+    );
+  }
+  const noCapture = Object.entries(report.captureIds)
+    .filter(([, id]) => id === null)
+    .map(([role]) => `${role} (${report.runs[role]})`);
+  if (noCapture.length > 0) {
+    lines.push(
+      `No capture id: ${noCapture.join(", ")}; such a run (e.g. a CSV import) cannot be traced back to an Option Omega run.`,
     );
   }
   if (report.zeroCostFields.length > 0) {

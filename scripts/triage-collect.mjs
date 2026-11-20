@@ -425,7 +425,10 @@ export function resultsFor(id, manifest, collected, tbVersion) {
     authorCostsMatchBase: manifest.author_costs_match_base,
     checks,
     versions: { tradeblocks: tbVersion },
-    ooRunIds: [],
+    // A run's identity is its capture id; null for a role without one (CSV import).
+    captureIds: Object.fromEntries(
+      Object.keys(manifest.runs).map((role) => [role, manifest.capture_ids?.[role] ?? null]),
+    ),
     runFolder: null,
   };
 }

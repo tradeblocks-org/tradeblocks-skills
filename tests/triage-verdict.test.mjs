@@ -43,7 +43,7 @@ const DESC = "synthetic source text";
 
 // A complete, passing check-results object; tests change one thing at a time.
 function passing(overrides = {}) {
-  return {
+  const r = {
     case: "synthetic",
     runAt: "2026-01-01T00:00:00Z",
     source: null,
@@ -77,6 +77,10 @@ function passing(overrides = {}) {
     },
     ...overrides,
   };
+  // A run's identity is its capture id; one synthetic id per run role.
+  if (!("captureIds" in overrides))
+    r.captureIds = Object.fromEntries(Object.keys(r.runs).map((k) => [k, `cap-${k}`]));
+  return r;
 }
 
 function withCheck(id, metrics) {

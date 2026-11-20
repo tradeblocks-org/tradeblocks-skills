@@ -47,7 +47,7 @@ const sheet = (status = "n/a", overrides = {}) => ({
 });
 
 function passing(overrides = {}) {
-  return {
+  const r = {
     case: "synthetic",
     runAt: "2026-01-01T00:00:00Z",
     source: null,
@@ -81,6 +81,10 @@ function passing(overrides = {}) {
     },
     ...overrides,
   };
+  // A run's identity is its capture id; one synthetic id per run role.
+  if (!("captureIds" in overrides))
+    r.captureIds = Object.fromEntries(Object.keys(r.runs).map((k) => [k, `cap-${k}`]));
+  return r;
 }
 
 test("baseline: the complete passing input continues", () => {
