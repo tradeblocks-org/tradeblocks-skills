@@ -1,0 +1,259 @@
+{
+  "version": "0.1.0",
+  "description": "Default thresholds for the V1 triage checks C1-C8: the draft values from the requirements, unchanged. They were checked for consistency on the synthetic cases A1-A5, which is not a calibration; tuning needs real strategies with known outcomes. A user copy named in the local config overrides this file. Change values only here, with date and reason.",
+  "bootstrap": {
+    "seed": 42,
+    "resamples": 2000,
+    "ciLevel": 0.95,
+    "description": "Passed to paired_bootstrap_comparison for C4. Fixed so the same inputs give the same verdict."
+  },
+  "requires": {
+    "tradeblocks": null,
+    "tradeblocksPending": "first TradeBlocks release containing tradeblocks-org/tradeblocks#639, #640, #641, #642 and #648 (paired-comparison grid fix: day grid from the compared strategies only); pin the version here before this skill is merged",
+    "tools": {
+      "get_rule_calendar": [
+        "recordEnd"
+      ],
+      "paired_bootstrap_comparison": [
+        "unobservedDays",
+        "grid",
+        "coverage"
+      ],
+      "get_statistics": [
+        "topDays"
+      ],
+      "get_period_returns": [],
+      "stress_test": [],
+      "run_sql": []
+    },
+    "description": "Tools and options the checks call: get_rule_calendar recordEnd (C3, #641), paired_bootstrap_comparison unobservedDays/grid/coverage (C4, #640; day grid from the two arms only, grid-fix PR), get_statistics topDays (C5, #642). A missing tool or option makes its check not run. The interval fix #639 cannot be detected from the tool list; until the pinned release, the interval guard (point outside its own interval -> cap) is the only protection."
+  },
+  "checks": {
+    "C1": {
+      "name": "Backtest matches its source",
+      "need": "N43",
+      "runsWhen": "a source description is supplied",
+      "rules": [
+        {
+          "metric": "confidence",
+          "op": "<",
+          "value": 0.8,
+          "outcome": "cap",
+          "unit": "share"
+        },
+        {
+          "metric": "assumedCoreFields",
+          "op": ">",
+          "value": 0,
+          "outcome": "cap",
+          "unit": "fields"
+        }
+      ],
+      "weights": {
+        "core": 2,
+        "secondary": 1,
+        "coreFields": [
+          "underlying",
+          "structure",
+          "legs",
+          "dte",
+          "entry_time",
+          "stop",
+          "exit"
+        ],
+        "secondaryFields": [
+          "entry_filters",
+          "days_traded",
+          "reentry",
+          "sizing",
+          "fills",
+          "date_range"
+        ]
+      },
+      "changed": "2026-11-19",
+      "reason": "draft value from the requirements, checked on synthetic A1-A5, not tuned"
+    },
+    "C2": {
+      "name": "Sample can carry a verdict",
+      "need": "N4",
+      "rules": [
+        {
+          "metric": "trades",
+          "op": "<",
+          "value": 100,
+          "outcome": "cap",
+          "unit": "trades"
+        },
+        {
+          "metric": "months",
+          "op": "<",
+          "value": 24,
+          "outcome": "cap",
+          "unit": "months"
+        },
+        {
+          "metric": "distinctContractCounts",
+          "op": ">",
+          "value": 1,
+          "outcome": "cap",
+          "unit": "counts"
+        }
+      ],
+      "changed": "2026-11-19",
+      "reason": "draft values from the requirements, checked on synthetic A1-A5, not tuned; distinctContractCounts added 2026-11-19 (fixed size, decided after review v1)"
+    },
+    "C3": {
+      "name": "Backtest trades the stated expiries",
+      "need": "N45, N18",
+      "rules": [
+        {
+          "metric": "maxYearDteMismatchShare",
+          "op": ">",
+          "value": 0.05,
+          "outcome": "cap",
+          "unit": "share"
+        },
+        {
+          "metric": "missingRuleDayShare",
+          "op": ">",
+          "value": 0.05,
+          "outcome": "cap",
+          "unit": "share"
+        }
+      ],
+      "changed": "2026-11-19",
+      "reason": "draft value from the requirements, checked on synthetic A1-A5, not tuned",
+      "note": "A triggered C3 rule stops the triage at step 2 with unclear; later checks are logged, not counted."
+    },
+    "C4": {
+      "name": "Edge is more than harvested premium (gate)",
+      "need": "N19",
+      "gate": true,
+      "rules": [
+        {
+          "metric": "point",
+          "op": "<=",
+          "value": 0,
+          "outcome": "reject",
+          "unit": "USD/day"
+        },
+        {
+          "metric": "ciLow",
+          "op": "<=",
+          "value": 0,
+          "outcome": "cap",
+          "unit": "USD/day"
+        }
+      ],
+      "changed": "2026-11-19",
+      "reason": "draft value from the requirements, checked on synthetic A1-A5, not tuned"
+    },
+    "C5": {
+      "name": "Result does not hang on a few days",
+      "need": "N23",
+      "rules": [
+        {
+          "metric": "plWithoutBest5",
+          "op": "<=",
+          "value": 0,
+          "outcome": "reject",
+          "unit": "USD"
+        },
+        {
+          "metric": "best10Share",
+          "op": ">",
+          "value": 0.5,
+          "outcome": "cap",
+          "unit": "share"
+        },
+        {
+          "metric": "positiveYearShare",
+          "op": "<",
+          "value": 0.6,
+          "outcome": "cap",
+          "unit": "share"
+        }
+      ],
+      "changed": "2026-11-19",
+      "reason": "draft value from the requirements, checked on synthetic A1-A5, not tuned"
+    },
+    "C6": {
+      "name": "Strategy survives stress",
+      "need": "N25",
+      "rules": [
+        {
+          "metric": "stressPeriodsInRecord",
+          "op": "<",
+          "value": 1,
+          "outcome": "cap",
+          "unit": "periods"
+        },
+        {
+          "metric": "worstStressLossInAvgMonths",
+          "op": ">",
+          "value": 12,
+          "outcome": "reject",
+          "unit": "months"
+        }
+      ],
+      "changed": "2026-11-19",
+      "reason": "draft value from the requirements, checked on synthetic A1-A5, not tuned"
+    },
+    "C7": {
+      "name": "Edge survives realistic costs",
+      "need": "N44",
+      "rules": [
+        {
+          "metric": "cost2xPl",
+          "op": "<=",
+          "value": 0,
+          "outcome": "reject",
+          "unit": "USD"
+        },
+        {
+          "metric": "cost2xKeepShare",
+          "op": "<",
+          "value": 0.5,
+          "outcome": "cap",
+          "unit": "share"
+        }
+      ],
+      "changed": "2026-11-19",
+      "reason": "draft value from the requirements, checked on synthetic A1-A5, not tuned"
+    },
+    "C8": {
+      "name": "Edge does not live on bad-quote stops",
+      "need": "N44",
+      "runsWhen": "the author run uses intra-minute stops",
+      "rules": [
+        {
+          "metric": "minuteStopPl",
+          "op": "<=",
+          "value": 0,
+          "outcome": "reject",
+          "unit": "USD"
+        },
+        {
+          "metric": "minuteStopDropShare",
+          "op": ">",
+          "value": 0.5,
+          "outcome": "cap",
+          "unit": "share"
+        }
+      ],
+      "changed": "2026-11-19",
+      "reason": "draft value from the requirements, checked on synthetic A1-A5, not tuned"
+    }
+  },
+  "exitMix": {
+    "name": "author_base trades like the author run",
+    "metric": "maxShareDiff",
+    "op": ">",
+    "value": 0.1,
+    "outcome": "cap",
+    "unit": "share",
+    "description": "Largest difference in exit-reason share (profit target, stop, expiry, time, other) between the author run and author_base. Above the value the re-costing changed the strategy (e.g. a closing-order target that fills only at 0 exit slippage): flag and cap.",
+    "changed": "2026-11-19",
+    "reason": "draft value, decided after review v2; checked on the real e2e case, not tuned"
+  }
+}

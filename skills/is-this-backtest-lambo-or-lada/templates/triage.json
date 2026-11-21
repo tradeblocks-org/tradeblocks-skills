@@ -1,0 +1,51 @@
+{
+  "block_id": "<TradeBlocks block id holding every run of this triage>",
+  "source": {
+    "ref": "<channel · title · date, or file name>",
+    "description": "<the source text or transcript excerpt the rule sheet is checked against; remove the whole source object when there is none>"
+  },
+  "rule_sheet": {
+    "underlying": { "value": "SPX", "status": "stated" },
+    "structure": { "value": "<e.g. put credit spread>", "status": "stated" },
+    "legs": { "value": "<delta or offset, width>", "status": "stated" },
+    "dte": { "value": 0, "status": "stated" },
+    "entry_time": { "value": "<HH:mm>", "status": "stated" },
+    "stop": { "value": "<type, value, intra-minute or minute>", "status": "assumed" },
+    "exit": { "value": "<profit target or time exit>", "status": "stated" },
+    "entry_filters": { "value": "none", "status": "stated" },
+    "days_traded": { "value": "<weekdays>", "status": "stated" },
+    "reentry": { "value": "none", "status": "n/a" },
+    "sizing": { "value": "<fixed size>", "status": "stated" },
+    "fills": { "value": "<slippage assumption>", "status": "assumed" },
+    "date_range": { "value": "<author's record>", "status": "stated" }
+  },
+  "runs": {
+    "author": "<Strategy label of the author run in the block>",
+    "author_base": "<label; only when the run request asks for it>",
+    "naive": "<label, or remove until the run exists>",
+    "cost_2x": "<label, or remove until the run exists>",
+    "minute_stop": "<label; only when the run request asks for it>"
+  },
+  "capture_ids": {
+    "author": "<oo-capture capture id of this run; null when the run has none, e.g. a CSV import>",
+    "naive": "<capture id of this run, or null>"
+  },
+  "oo_settings": {
+    "useExactDte": false,
+    "entryDays": ["Monday"],
+    "dte": 0,
+    "entryTime": "<HH:mm>",
+    "additionalEntryTimes": [],
+    "entryFilters": [],
+    "useIntraMinuteStop": false,
+    "rangeStart": "<yyyy-MM-dd of the author run>",
+    "rangeEnd": "<yyyy-MM-dd of the author run>"
+  },
+  "run_ranges": {
+    "author": { "from": "<OO rangeStart of the author run>", "through": "<OO rangeEnd>" },
+    "author_base": { "from": "<OO rangeStart of this run>", "through": "<OO rangeEnd>" },
+    "naive": { "from": "<OO rangeStart of this run>", "through": "<OO rangeEnd>" }
+  },
+  "author_costs_match_base": false,
+  "variants_tried": 1
+}

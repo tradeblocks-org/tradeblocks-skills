@@ -1,0 +1,851 @@
+#!/usr/bin/env node
+// Triage verdict for is-this-backtest-lambo-or-lada.
+//
+// Reads one check-results file (metrics the skill collected from TradeBlocks),
+// applies the thresholds file, computes the translation-confidence score C1
+// from the rule sheet, caps for missing runs, and returns the verdict, one
+// append-only JSONL log line and the phone-readable summary. The verdict is a
+// pure function of its inputs: no clock, no randomness, no network.
+//
+//   node triage-verdict.mjs --results <file> [--thresholds <file>]
+//                           [--log <jsonl>] [--summary <file>]
+//
+// Exit 0 with the report as JSON on stdout; on bad input exit 1 with
+// "REASON: detail" on stderr.
+
+import {
+  readFileSync,
+  appendFileSync,
+  writeFileSync,
+  realpathSync,
+} from "node:fs";
+import { createHash } from "node:crypto";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+export const SKILL_VERSION = "0.1.0";
+// Content hash of this script: identifies the exact verdict logic in the log (R8).
+const SCRIPT_SHA256 = createHash("sha256")
+  .update(readFileSync(fileURLToPath(import.meta.url)))
+  .digest("hex");
+const DEFAULT_THRESHOLDS = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "skills",
+  "is-this-backtest-lambo-or-lada",
+  "thresholds.json",
+);
+
+const COSTS_EXAMPLE = "costs: example (not your own)";
+const ORDER = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"];
+const SEVERITY = { pass: 0, cap: 1, reject: 2 };
+const OPS = {
+  "<": (a, b) => a < b,
+  "<=": (a, b) => a <= b,
+  ">": (a, b) => a > b,
+  ">=": (a, b) => a >= b,
+};
+
+function fail(reason, detail) {
+  throw new Error(`${reason}: ${detail}`);
+}
+
+const OUTCOMES = new Set(["cap", "reject"]);
+
+/** Refuse a thresholds file the verdict cannot apply exactly (user copies included). */
+export function validateThresholds(thresholds) {
+  if (!thresholds || typeof thresholds !== "object")
+    fail("BAD_THRESHOLDS", "not an object");
+  for (const id of ORDER) {
+    const def = thresholds.checks?.[id];
+    if (!def) fail("BAD_THRESHOLDS", `check ${id} missing`);
+    if (!Array.isArray(def.rules) || def.rules.length === 0)
+      fail("BAD_THRESHOLDS", `${id} has no rules`);
+    def.rules.forEach((r, i) => {
+      if (typeof r.metric !== "string" || r.metric === "")
+        fail("BAD_THRESHOLDS", `${id} rule ${i} metric`);
+      if (!(r.op in OPS))
+        fail("BAD_THRESHOLDS", `${id} rule ${i} op ${JSON.stringify(r.op)}`);
+      if (!OUTCOMES.has(r.outcome))
+        fail(
+          "BAD_THRESHOLDS",
+          `${id} rule ${i} outcome ${JSON.stringify(r.outcome)}`,
+        );
+      if (typeof r.value !== "number" || !Number.isFinite(r.value)) {
+        fail(
+          "BAD_THRESHOLDS",
+          `${id} rule ${i} value ${JSON.stringify(r.value)}`,
+        );
+      }
+    });
+  }
+  const em = thresholds.exitMix;
+  if (
+    !em ||
+    !(em.op in OPS) ||
+    !OUTCOMES.has(em.outcome) ||
+    typeof em.value !== "number" ||
+    !Number.isFinite(em.value)
+  ) {
+    fail("BAD_THRESHOLDS", "exitMix needs op, value and outcome");
+  }
+  const w = thresholds.checks.C1.weights;
+  if (!w || !Array.isArray(w.coreFields) || !Array.isArray(w.secondaryFields)) {
+    fail("BAD_THRESHOLDS", "C1 weights need coreFields and secondaryFields");
+  }
+}
+
+/**
+ * R1: no unknown names, a known status each, every secondary field present
+ * (n/a allowed). A core field missing from the sheet counts as assumed.
+ */
+export function validateRuleSheet(ruleSheet, weights) {
+  if (!ruleSheet || typeof ruleSheet !== "object")
+    fail("BAD_RULE_SHEET", "rule sheet missing");
+  const known = [...weights.coreFields, ...weights.secondaryFields];
+  // Unknown names first: a misspelt field is reported as such, not as missing.
+  const unknown = Object.keys(ruleSheet).filter((f) => !known.includes(f));
+  if (unknown.length > 0)
+    fail("BAD_RULE_SHEET", `unknown fields: ${unknown.join(", ")}`);
+  const missing = weights.secondaryFields.filter((f) => !(f in ruleSheet));
+  if (missing.length > 0)
+    fail("BAD_RULE_SHEET", `missing secondary fields: ${missing.join(", ")}`);
+  for (const [field, entry] of Object.entries(ruleSheet)) {
+    if (!["stated", "assumed", "n/a"].includes(entry?.status)) {
+      fail(
+        "BAD_RULE_SHEET",
+        `field ${field} has status ${JSON.stringify(entry?.status)}`,
+      );
+    }
+  }
+}
+
+const hasDescription = (source) =>
+  !!source &&
+  ((typeof source.description === "string" &&
+    source.description.trim() !== "") ||
+    (typeof source.descriptionSha256 === "string" &&
+      /^[0-9a-f]{64}$/.test(source.descriptionSha256)));
+
+// ---------------------------------------------------------------------------
+// C1 translation confidence
+// ---------------------------------------------------------------------------
+
+/** Weighted share of stated rule fields; assumed core fields counted separately. */
+export function translationConfidence(ruleSheet, weights) {
+  const core = new Set(weights.coreFields);
+  const secondary = new Set(weights.secondaryFields);
+  let stated = 0;
+  let applicable = 0;
+  const assumedCore = [];
+  const assumed = [];
+  const unknown = [];
+  // A core field missing from the sheet counts as assumed (C1 caps).
+  const sheet = { ...(ruleSheet ?? {}) };
+  for (const f of weights.coreFields) {
+    if (!(f in sheet)) sheet[f] = { value: null, status: "assumed" };
+  }
+  for (const [field, entry] of Object.entries(sheet)) {
+    const status = entry?.status;
+    if (!["stated", "assumed", "n/a"].includes(status)) {
+      fail(
+        "BAD_RULE_SHEET",
+        `field ${field} has status ${JSON.stringify(status)}`,
+      );
+    }
+    const weight = core.has(field)
+      ? weights.core
+      : secondary.has(field)
+        ? weights.secondary
+        : null;
+    if (weight === null) {
+      unknown.push(field);
+      continue;
+    }
+    if (status === "n/a") continue;
+    applicable += weight;
+    if (status === "stated") stated += weight;
+    else {
+      assumed.push(field);
+      if (core.has(field)) assumedCore.push(field);
+    }
+  }
+  return {
+    confidence: applicable === 0 ? 0 : stated / applicable,
+    assumedCoreFields: assumedCore.length,
+    assumedCore,
+    assumed,
+    unknownFields: unknown,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Evaluation
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply a check's rules. A metric that is absent makes the whole check not
+ * run; a metric that is explicitly null means only that part could not run:
+ * its rule is skipped, the check is capped, the other rules still apply.
+ */
+function applyRules(rules, metrics) {
+  const missing = rules
+    .map((r) => r.metric)
+    .filter((m) => metrics?.[m] === undefined);
+  if (missing.length > 0)
+    return { outcome: null, missing, notRunParts: [], triggered: [] };
+  const notRunParts = rules
+    .map((r) => r.metric)
+    .filter((m) => metrics[m] === null);
+  const bad = rules
+    .map((r) => r.metric)
+    .filter((m) => metrics[m] !== null && typeof metrics[m] !== "number");
+  if (bad.length > 0)
+    fail("BAD_RESULTS", `metrics must be numbers or null: ${bad.join(", ")}`);
+  const triggered = rules.filter(
+    (r) => metrics[r.metric] !== null && OPS[r.op](metrics[r.metric], r.value),
+  );
+  let outcome = triggered.reduce(
+    (worst, r) => (SEVERITY[r.outcome] > SEVERITY[worst] ? r.outcome : worst),
+    "pass",
+  );
+  if (notRunParts.length > 0 && SEVERITY[outcome] < SEVERITY.cap)
+    outcome = "cap";
+  return { outcome, missing: [], notRunParts, triggered };
+}
+
+function notRun(reason) {
+  return { status: "not_run", outcome: "cap", reason };
+}
+
+const EXIT_CLASSES = [
+  ["profit_target", /profit/i],
+  ["stop", /stop/i],
+  ["expiry", /expir/i],
+  ["time", /time|dte|dit|mit/i],
+];
+// Option Omega closes a position still open at the end of the range as
+// "Backtest Completed" (closeOpenTradesAtTestCompletion). One such exit per
+// run is the end of the test, not a trading decision: it is left out of the
+// mix. Any further one counts as "other".
+const END_OF_TEST = /backtest completed/i;
+
+/** Exit-reason counts by class (profit target, stop, expiry, time, other). */
+function exitClasses(counts) {
+  const out = { profit_target: 0, stop: 0, expiry: 0, time: 0, other: 0 };
+  let endOfTestLeft = 1;
+  for (const [reason, n] of Object.entries(counts)) {
+    if (typeof n !== "number" || !Number.isFinite(n) || n < 0) {
+      fail(
+        "BAD_RESULTS",
+        `exit-reason count for ${JSON.stringify(reason)} must be a number`,
+      );
+    }
+    let count = n;
+    if (END_OF_TEST.test(reason)) {
+      const neutral = Math.min(count, endOfTestLeft);
+      endOfTestLeft -= neutral;
+      count -= neutral;
+    }
+    const cls = EXIT_CLASSES.find(([, re]) => re.test(reason))?.[0] ?? "other";
+    out[cls] += count;
+  }
+  return out;
+}
+
+/** Largest difference in exit-reason share between author and author_base. */
+export function compareExitMix(author, authorBase, rule) {
+  const a = exitClasses(author);
+  const b = exitClasses(authorBase);
+  const ta = Object.values(a).reduce((x, y) => x + y, 0);
+  const tb = Object.values(b).reduce((x, y) => x + y, 0);
+  if (ta === 0 || tb === 0) {
+    return {
+      status: "not_run",
+      reason: "no exit reasons counted for author or author_base",
+    };
+  }
+  const diffs = Object.fromEntries(
+    Object.keys(a).map((k) => [k, Math.abs(a[k] / ta - b[k] / tb)]),
+  );
+  const maxShareDiff = Math.max(...Object.values(diffs));
+  const changed = OPS[rule.op](maxShareDiff, rule.value);
+  return {
+    status: changed ? "changed" : "same",
+    maxShareDiff,
+    author: a,
+    authorBase: b,
+    ...(changed
+      ? {
+          reason:
+            "re-costing changed the exit-reason mix (author_base does not trade like the author run)",
+        }
+      : {}),
+  };
+}
+
+/**
+ * Evaluate one check-results object against the thresholds.
+ * Returns the full report (verdict, per-check rows, not-tested list).
+ */
+export function evaluate(
+  results,
+  thresholds,
+  { thresholdsSha256 = null } = {},
+) {
+  if (!results || typeof results !== "object")
+    fail("BAD_RESULTS", "not an object");
+  validateThresholds(thresholds);
+  const runs = results.runs ?? {};
+  if (!runs.author)
+    fail("NO_AUTHOR_RUN", "the author run is required for any triage");
+  for (const flag of ["authorUsesIntraMinuteStops", "authorCostsMatchBase"]) {
+    if (typeof results[flag] !== "boolean") {
+      fail(
+        "BAD_RESULTS",
+        `${flag} must be true or false (read it from the author run's settings)`,
+      );
+    }
+  }
+  validateRuleSheet(results.ruleSheet, thresholds.checks.C1.weights);
+  if (!results.runSizes || typeof results.runSizes !== "object") {
+    fail(
+      "BAD_RESULTS",
+      "runSizes (distinct contract counts per run label) is required",
+    );
+  }
+  const cov = results.c4Coverage;
+  if (
+    cov !== undefined &&
+    (cov === null ||
+      typeof cov !== "object" ||
+      !["caller", "heldWindow"].includes(cov.source))
+  ) {
+    fail(
+      "BAD_RESULTS",
+      'c4Coverage.source must be "caller" or "heldWindow" (from paired_bootstrap_comparison)',
+    );
+  }
+  if (!Array.isArray(results.zeroCostFields)) {
+    fail(
+      "BAD_RESULTS",
+      "zeroCostFields (from the run request) is required, [] when none",
+    );
+  }
+  if (typeof results.costsExample !== "boolean") {
+    fail(
+      "BAD_RESULTS",
+      "costsExample (from the run request) is required: true when the costs are the shipped example",
+    );
+  }
+  // A run's identity is its capture id. ooRunIds held Option Omega slot ids
+  // (reused across runs), so it is refused instead of mapped.
+  if ("ooRunIds" in results) {
+    fail(
+      "REMOVED_FIELD",
+      "ooRunIds is gone (it held Option Omega slot ids, not run ids); write captureIds instead: per run role the capture id from triage.json capture_ids, null for a role without one",
+    );
+  }
+  const caps = results.captureIds;
+  if (!caps || typeof caps !== "object" || Array.isArray(caps)) {
+    fail(
+      "BAD_RESULTS",
+      "captureIds is required: per run role the capture id from triage.json capture_ids, null for a role without one",
+    );
+  }
+  const roles = Object.keys(runs).filter((r) => runs[r] !== undefined && runs[r] !== null);
+  const missing = roles.filter((r) => !(r in caps));
+  const extra = Object.keys(caps).filter((r) => !roles.includes(r));
+  const badIds = Object.entries(caps)
+    .filter(([, v]) => v !== null && (typeof v !== "string" || v === ""))
+    .map(([r]) => r);
+  if (missing.length || extra.length || badIds.length) {
+    fail(
+      "BAD_RESULTS",
+      `captureIds must name exactly the run roles, each a capture id or null` +
+        (missing.length ? `; missing: ${missing.join(", ")}` : "") +
+        (extra.length ? `; not a run role: ${extra.join(", ")}` : "") +
+        (badIds.length ? `; not a capture id: ${badIds.join(", ")}` : ""),
+    );
+  }
+  // One label per role: a run reused for two roles would compare it with itself.
+  const labels = Object.values(runs).filter(
+    (v) => v !== undefined && v !== null,
+  );
+  if (new Set(labels).size !== labels.length) {
+    fail(
+      "BAD_RESULTS",
+      `run labels must be distinct across roles: ${JSON.stringify(runs)}`,
+    );
+  }
+
+  // The collector reads author_base whenever the manifest names it; a flag that
+  // says the author is on base costs would make this script read the author.
+  if (results.authorCostsMatchBase && runs.author_base) {
+    fail(
+      "BAD_RESULTS",
+      "author_base is given although authorCostsMatchBase is true; drop one (the checks would read different runs)",
+    );
+  }
+
+  // R6: every check reads the run on the user's base costs. author_base replaces
+  // the author run when the author's own costs differ from the base scenario.
+  const costBasis = results.authorCostsMatchBase
+    ? { status: "base", checkedRun: runs.author }
+    : runs.author_base
+      ? { status: "base", checkedRun: runs.author_base, replaces: runs.author }
+      : {
+          status: "not_base",
+          checkedRun: runs.author,
+          reason:
+            "author run is not on the base cost scenario and the author_base run is missing",
+        };
+
+  // author_base must trade like the author run: re-costing must not change the
+  // exit-reason mix (e.g. a closing-order target that fills only at 0 slippage).
+  const exitMix = !runs.author_base
+    ? { status: "n/a" }
+    : results.exitMix?.author && results.exitMix?.authorBase
+      ? compareExitMix(
+          results.exitMix.author,
+          results.exitMix.authorBase,
+          thresholds.exitMix,
+        )
+      : {
+          status: "not_run",
+          reason: "exit-reason counts of author and author_base not read",
+        };
+
+  const rows = {};
+  for (const id of ORDER) {
+    const def = thresholds.checks[id];
+    const supplied = results.checks?.[id];
+    let row;
+    // Off the base costs without author_base, every cost-dependent check would
+    // compare runs at different costs: not run (C2 and C3 do not depend on costs).
+    const costDependent = ["C4", "C5", "C6", "C7", "C8"].includes(id);
+    const otherRole = { C4: "naive", C7: "cost_2x", C8: "minute_stop" }[id];
+    const otherLabel = otherRole ? runs[otherRole] : undefined;
+    const otherSize = otherLabel ? results.runSizes[otherLabel] : undefined;
+    if (costDependent && costBasis.status !== "base") {
+      row = notRun("author_base run missing (author off base costs)");
+    } else if (costDependent && exitMix.status === "changed") {
+      // author_base is a different strategy, not the author's on other costs.
+      row = notRun(
+        "exit mix changed by re-costing (author_base does not trade like the author run)",
+      );
+    } else if (otherLabel && otherSize === undefined) {
+      row = notRun(`contract counts of the ${otherRole} run not read`);
+    } else if (otherLabel && otherSize !== 1) {
+      row = notRun(
+        `${otherRole} run is not on fixed size (${otherSize} contract counts)`,
+      );
+    } else if (id === "C1") {
+      if (!hasDescription(results.source)) {
+        row = {
+          status: "skipped",
+          outcome: "pass",
+          reason: "no source description supplied",
+        };
+      } else {
+        const c1 = translationConfidence(results.ruleSheet, def.weights);
+        const { outcome, triggered } = applyRules(def.rules, c1);
+        row = { status: "run", outcome, metrics: c1, triggered };
+      }
+    } else if (id === "C4" && !runs.naive) {
+      row = notRun("naive run missing");
+    } else if (id === "C7" && !runs.cost_2x) {
+      row = notRun("cost_2x run missing");
+    } else if (id === "C8" && results.authorUsesIntraMinuteStops !== true) {
+      row = {
+        status: "not_applicable",
+        outcome: "pass",
+        reason: "author run uses no intra-minute stops",
+      };
+    } else if (id === "C8" && !runs.minute_stop) {
+      row = notRun("minute_stop run missing");
+    } else if (!supplied || supplied.notRun) {
+      row = notRun(supplied?.notRun ?? "no result supplied");
+    } else {
+      const { outcome, missing, notRunParts, triggered } = applyRules(
+        def.rules,
+        supplied.metrics,
+      );
+      row =
+        outcome === null
+          ? notRun(`metrics missing: ${missing.join(", ")}`)
+          : {
+              status: notRunParts.length > 0 ? "partial" : "run",
+              outcome,
+              metrics: supplied.metrics,
+              triggered,
+              ...(notRunParts.length > 0
+                ? {
+                    reason:
+                      supplied.notRunReason ??
+                      `not run: ${notRunParts.join(", ")}`,
+                  }
+                : {}),
+            };
+    }
+
+    // R9 guard: an interval that excludes its own point estimate is unreliable.
+    if (id === "C4" && (row.status === "run" || row.status === "partial")) {
+      const { point, ciLow, ciHigh } = row.metrics;
+      const bounds = [ciLow, ciHigh].every((b) => typeof b === "number");
+      if (!bounds || point < ciLow || point > ciHigh) {
+        row.unreliable = bounds
+          ? "bootstrap interval excludes its own point estimate"
+          : "bootstrap interval bound missing";
+        if (SEVERITY[row.outcome] < SEVERITY.cap) row.outcome = "cap";
+      }
+    }
+    // Coverage: without each run's backtest range TradeBlocks trims the flat
+    // days to the common traded window, which is biased toward reject.
+    if (id === "C4" && row.status === "run") {
+      const cov = results.c4Coverage;
+      const why =
+        cov === undefined
+          ? "C4 coverage not recorded"
+          : cov.source !== "caller"
+            ? "no coverage (backtest ranges unknown): flat days limited to the common traded window"
+            : null;
+      if (why) {
+        // At most cap: a reject cannot stand on a trimmed window either.
+        row.outcome = "cap";
+        row.reason = row.reason ? `${row.reason}; ${why}` : why;
+      }
+    }
+    // R6: an explicit 0 slippage in the base scenario makes C7 meaningless.
+    const zeroSlip = results.zeroCostFields.filter((f) =>
+      /^base\..*Slippage$/.test(f),
+    );
+    if (id === "C7" && zeroSlip.length > 0 && row.status === "run") {
+      if (SEVERITY[row.outcome] < SEVERITY.cap) row.outcome = "cap";
+      row.reason = `slippage 0 in the base scenario: ${zeroSlip.join(", ")}`;
+    }
+    // PRD rev 230: example costs say nothing about the user's own costs.
+    if (id === "C7" && results.costsExample && row.status === "run") {
+      if (SEVERITY[row.outcome] < SEVERITY.cap) row.outcome = "cap";
+      row.reason = row.reason ? `${row.reason}; ${COSTS_EXAMPLE}` : COSTS_EXAMPLE;
+    }
+    row.name = def.name;
+    rows[id] = row;
+  }
+
+  // Step 2: a C3 cap means the backtest is not the strategy. The triage stops
+  // with unclear; later checks are logged, not counted, and never reject (Q6).
+  // Only a triggered rule stops; a part that could not run yet (no naive run)
+  // caps the verdict but lets the triage go on to the run request.
+  let stoppedAt = null;
+  if ((rows.C3.triggered ?? []).length > 0) {
+    stoppedAt = "C3";
+    for (const id of ORDER.slice(ORDER.indexOf("C3") + 1))
+      rows[id].afterStop = true;
+  }
+  // Gate: a C4 reject stops the triage; later checks are logged, not counted.
+  const gateFailed = stoppedAt === null && rows.C4.outcome === "reject";
+  if (gateFailed) {
+    for (const id of ORDER.slice(ORDER.indexOf("C4") + 1))
+      rows[id].afterGate = true;
+  }
+  const counted = ORDER.filter(
+    (id) => !rows[id].afterGate && !rows[id].afterStop,
+  ).map((id) => rows[id]);
+  const capped =
+    counted.some((r) => r.outcome === "cap") ||
+    costBasis.status !== "base" ||
+    exitMix.status === "changed" ||
+    exitMix.status === "not_run";
+  const verdict = counted.some((r) => r.outcome === "reject")
+    ? "reject"
+    : capped
+      ? "unclear"
+      : "continue";
+
+  const notTested = ORDER.filter((id) =>
+    ["not_run", "partial", "skipped", "not_applicable"].includes(
+      rows[id].status,
+    ),
+  ).map((id) => ({
+    id,
+    name: rows[id].name,
+    status: rows[id].status,
+    reason: rows[id].reason,
+  }));
+  if (exitMix.status === "changed" || exitMix.status === "not_run") {
+    notTested.unshift({
+      id: "exitMix",
+      name: "author_base trades like the author run",
+      status: exitMix.status,
+      reason: exitMix.reason,
+    });
+  }
+  if (costBasis.status !== "base") {
+    notTested.unshift({
+      id: "costs",
+      name: "Base cost scenario",
+      status: "not_run",
+      reason: costBasis.reason,
+    });
+  }
+
+  return {
+    case: results.case ?? null,
+    runAt: results.runAt ?? null,
+    source: results.source ?? null,
+    runs,
+    blockId: results.blockId ?? null,
+    costs: results.costs ?? null,
+    costsSha256: results.costsSha256 ?? null,
+    costsSource: results.costsExample ? "example (not your own)" : "own",
+    ruleSheet: results.ruleSheet ?? null,
+    variantsTried: results.variantsTried ?? null,
+    verdict,
+    light: { continue: "green", unclear: "yellow", reject: "red" }[verdict],
+    gateFailed,
+    stoppedAt,
+    costBasis,
+    exitMix,
+    c4Coverage: results.c4Coverage ?? null,
+    runSizes: results.runSizes,
+    zeroCostFields: results.zeroCostFields,
+    checks: rows,
+    notTested,
+    thresholdsVersion: thresholds.version,
+    thresholdsSha256,
+    versions: {
+      ...(results.versions ?? {}),
+      skill: SKILL_VERSION,
+      verdictScriptSha256: SCRIPT_SHA256,
+    },
+    captureIds: results.captureIds,
+    runFolder: results.runFolder ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Output
+// ---------------------------------------------------------------------------
+
+/** One JSONL log line (R8). Deterministic: no clock; the caller supplies runAt. */
+export function logLine(report) {
+  const checks = {};
+  for (const id of ORDER) {
+    const r = report.checks[id];
+    checks[id] = {
+      status: r.status,
+      outcome: r.outcome,
+      ...(r.metrics ? { metrics: r.metrics } : {}),
+      ...(r.reason ? { reason: r.reason } : {}),
+      ...(r.unreliable ? { unreliable: r.unreliable } : {}),
+      ...(r.afterGate ? { afterGate: true } : {}),
+      ...(r.afterStop ? { afterStop: true } : {}),
+    };
+  }
+  return JSON.stringify({
+    runAt: report.runAt,
+    case: report.case,
+    source: report.source,
+    inputs: {
+      blockId: report.blockId,
+      runs: report.runs,
+      costs: report.costs,
+      costsSha256: report.costsSha256,
+    },
+    costsSource: report.costsSource,
+    ruleSheet: report.ruleSheet,
+    confidence: report.checks.C1.metrics?.confidence ?? null,
+    checks,
+    verdict: report.verdict,
+    stoppedAt: report.stoppedAt,
+    costBasis: report.costBasis,
+    exitMix: report.exitMix,
+    c4Coverage: report.c4Coverage,
+    runSizes: report.runSizes,
+    zeroCostFields: report.zeroCostFields,
+    variantsTried: report.variantsTried,
+    thresholdsVersion: report.thresholdsVersion,
+    thresholdsSha256: report.thresholdsSha256,
+    versions: report.versions,
+    captureIds: report.captureIds,
+    runFolder: report.runFolder,
+  });
+}
+
+function fmt(value, unit) {
+  if (typeof value !== "number") return String(value);
+  if (unit === "share") return `${(value * 100).toFixed(1)} %`;
+  if (unit === "USD" || unit === "USD/day")
+    return `${value.toFixed(2)} ${unit}`;
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+/** Phone-readable summary (R11). */
+export function summary(report, thresholds) {
+  const lines = [];
+  const src = report.source;
+  lines.push(
+    src?.ref
+      ? `Source: ${src.ref}`
+      : `Source: not given (fidelity to a source not checked)`,
+  );
+  const icon = { green: "🟢", yellow: "🟡", red: "🔴" }[report.light];
+  lines.push(`${icon} Verdict: ${report.verdict.toUpperCase()}`);
+  if (report.stoppedAt === "C3") {
+    lines.push(
+      "Stopped at step 2: the backtest does not trade the stated rules (C3). Fix the rules and rerun; this is not a verdict on the strategy.",
+    );
+  }
+  lines.push(
+    report.costBasis.status === "base"
+      ? `Costs: checks read ${report.costBasis.checkedRun} on the base cost scenario.`
+      : `Costs: ${report.costBasis.reason}; verdict capped.`,
+  );
+  if (report.costsSource !== "own") {
+    lines.push(
+      `⚠️ ${COSTS_EXAMPLE}: the skill's example scenario, not your own costs; C7 capped. Give your own cost file for a verdict on your costs.`,
+    );
+  }
+  const noCapture = Object.entries(report.captureIds)
+    .filter(([, id]) => id === null)
+    .map(([role]) => `${role} (${report.runs[role]})`);
+  if (noCapture.length > 0) {
+    lines.push(
+      `No capture id: ${noCapture.join(", ")}; such a run (e.g. a CSV import) cannot be traced back to an Option Omega run.`,
+    );
+  }
+  if (report.zeroCostFields.length > 0) {
+    lines.push(
+      `Zero cost fields: ${report.zeroCostFields.join(", ")} (explicit 0 in the cost file).`,
+    );
+  }
+  if (report.exitMix.status === "changed") {
+    lines.push(
+      `Exit mix: re-costing changed the trade path (largest exit-reason share difference ${(report.exitMix.maxShareDiff * 100).toFixed(1)} %); author_base is a different strategy, C4-C8 not run.`,
+    );
+  } else if (report.exitMix.status === "not_run") {
+    lines.push(`Exit mix: ${report.exitMix.reason}; verdict capped.`);
+  }
+  const cov = report.c4Coverage;
+  if (cov?.source === "caller") {
+    const span = (r) => (r ? `${r.from} to ${r.through}` : "n/a");
+    lines.push(
+      `C4 coverage: each run's backtest range (checked run ${span(cov.A)}, naive ${span(cov.B)}); days without a position count as 0 only inside it.`,
+    );
+  } else if (cov?.source === "heldWindow") {
+    const t = cov.flatWindowTrimmed;
+    lines.push(
+      t?.trimmed
+        ? `C4 coverage: backtest ranges not known; flat days limited to the common traded window ${t.from} to ${t.through} (${t.droppedDays} edge days dropped).`
+        : "C4 coverage: backtest ranges not known; flat days limited to the common traded window (nothing dropped).",
+    );
+  }
+  lines.push("");
+  for (const id of ORDER) {
+    const r = report.checks[id];
+    const def = thresholds.checks[id];
+    let detail;
+    if (r.status === "run" || r.status === "partial") {
+      detail = def.rules
+        .map((rule) =>
+          r.metrics[rule.metric] === null
+            ? `${rule.metric} not run`
+            : `${rule.metric} ${fmt(r.metrics[rule.metric], rule.unit)} (${rule.outcome} if ${rule.op} ${fmt(rule.value, rule.unit)})`,
+        )
+        .join("; ");
+      if (r.status === "partial") detail += ` — ${r.reason}`;
+    } else {
+      detail = `${r.status.replace("_", " ")}: ${r.reason}`;
+    }
+    const tag = r.afterGate
+      ? " [after failed gate, not counted]"
+      : r.afterStop
+        ? " [after step-2 stop, not counted]"
+        : "";
+    const flag = r.unreliable ? ` ⚠ ${r.unreliable}` : "";
+    lines.push(
+      `${id} ${r.name}: ${r.outcome.toUpperCase()}${tag} — ${detail}${flag}`,
+    );
+  }
+  if (report.ruleSheet) {
+    lines.push("");
+    lines.push(
+      report.source
+        ? "Rule sheet (assumed fields marked *):"
+        : "Rule sheet (from the author run's settings; no source to compare):",
+    );
+    for (const [field, entry] of Object.entries(report.ruleSheet)) {
+      lines.push(
+        `  ${entry.status === "assumed" ? "*" : " "} ${field}: ${entry.value}`,
+      );
+    }
+  }
+  lines.push("");
+  lines.push(
+    report.notTested.length === 0
+      ? "Not tested: nothing in the V1 catalogue was skipped."
+      : "Not tested: " +
+          report.notTested.map((n) => `${n.id} (${n.reason})`).join("; "),
+  );
+  lines.push(
+    "Limits: one in-sample record, checks not adjusted for selecting this strategy among " +
+      `${report.variantsTried ?? "an unknown number of"} variants; triage is not due diligence.`,
+  );
+  return lines.join("\n") + "\n";
+}
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
+function readJson(path, reason) {
+  try {
+    return {
+      text: readFileSync(path, "utf8"),
+      json: JSON.parse(readFileSync(path, "utf8")),
+    };
+  } catch (error) {
+    fail(reason, `${path}: ${error.message}`);
+  }
+}
+
+export function run(argv) {
+  const args = {};
+  for (let i = 0; i < argv.length; i += 2) {
+    const key = argv[i];
+    if (
+      !["--results", "--thresholds", "--log", "--summary"].includes(key) ||
+      argv[i + 1] === undefined
+    ) {
+      fail(
+        "USAGE",
+        "triage-verdict.mjs --results <file> [--thresholds <file>] [--log <jsonl>] [--summary <file>]",
+      );
+    }
+    args[key.slice(2)] = argv[i + 1];
+  }
+  if (!args.results) fail("USAGE", "--results is required");
+  const thresholdsPath = args.thresholds ?? DEFAULT_THRESHOLDS;
+  const { text, json: thresholds } = readJson(thresholdsPath, "BAD_THRESHOLDS");
+  const { json: results } = readJson(args.results, "BAD_RESULTS");
+  const sha = createHash("sha256").update(text).digest("hex");
+  const report = evaluate(results, thresholds, { thresholdsSha256: sha });
+  const text_ = summary(report, thresholds);
+  if (args.log) appendFileSync(args.log, logLine(report) + "\n");
+  if (args.summary) writeFileSync(args.summary, text_);
+  return { report, summary: text_ };
+}
+
+if (
+  process.argv[1] &&
+  realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  try {
+    const { report } = run(process.argv.slice(2));
+    process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    process.exit(1);
+  }
+}

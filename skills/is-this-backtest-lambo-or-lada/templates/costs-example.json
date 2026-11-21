@@ -1,0 +1,22 @@
+{
+  "description": "Example cost scenario for a first try of is-this-backtest-lambo-or-lada when you have no cost file of your own. These are not your costs: the first-run setup shows them and uses them only after you confirm, and every summary and verdict-log entry then says \"costs: example (not your own)\" with C7 capped. Found them wrong for your broker? Give feedback, and use your own cost file (templates/costs.json).",
+  "source": "maintainer's researched SPX scenario, IBKR-style fees",
+  "exportedAt": "2026-11-20",
+  "sha256": "bbae43eeab3077f5925675487ad078732c4ac8ff5a64ce0af5701ed822a74b76",
+  "fields": {
+    "entrySlippage": "entry slippage per exit group (per side for a spread), in option points",
+    "exitSlippage": "slippage of a profit-target or time exit, in option points",
+    "stopLossSlippage": "slippage of a stop exit, in option points",
+    "openingFees": "fee per contract (per leg) to open, USD",
+    "closingFees": "fee per contract (per leg) to close, USD"
+  },
+  "scenarios": {
+    "example": {
+      "entrySlippage": 0.1,
+      "exitSlippage": 0.05,
+      "stopLossSlippage": 0.2,
+      "openingFees": 1.6,
+      "closingFees": 1.6
+    }
+  }
+}

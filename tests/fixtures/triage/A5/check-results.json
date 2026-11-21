@@ -1,0 +1,142 @@
+{
+  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2 + #639-#642 + #648, unreleased and read with the TradeBlocks calls in SKILL.md (scripts/triage-collect.mjs).",
+  "case": "A5",
+  "runAt": "2026-11-19T00:00:00Z",
+  "source": {
+    "ref": "Synthetic case A5",
+    "description": "Synthetic source for case A5: sell a 7 DTE SPX put spread every Monday at 09:35, skip filter-off days, hold to expiry."
+  },
+  "ruleSheet": {
+    "underlying": {
+      "value": "SPX",
+      "status": "stated"
+    },
+    "structure": {
+      "value": "put credit spread",
+      "status": "stated"
+    },
+    "legs": {
+      "value": "short 20 delta, 50 wide",
+      "status": "stated"
+    },
+    "dte": {
+      "value": 7,
+      "status": "stated"
+    },
+    "entry_time": {
+      "value": "09:35",
+      "status": "stated"
+    },
+    "stop": {
+      "value": "none",
+      "status": "stated"
+    },
+    "exit": {
+      "value": "hold to expiry",
+      "status": "stated"
+    },
+    "entry_filters": {
+      "value": "skip filter-off days",
+      "status": "stated"
+    },
+    "days_traded": {
+      "value": "Monday",
+      "status": "stated"
+    },
+    "reentry": {
+      "value": "none",
+      "status": "stated"
+    },
+    "sizing": {
+      "value": "1 lot",
+      "status": "stated"
+    },
+    "fills": {
+      "value": "OO default",
+      "status": "assumed"
+    },
+    "date_range": {
+      "value": "2016-01 to 2018-12",
+      "status": "stated"
+    }
+  },
+  "blockId": "triage-a5",
+  "runs": {
+    "author": "A5-author",
+    "naive": "A5-naive",
+    "cost_2x": "A5-cost2x"
+  },
+  "costs": null,
+  "costsSha256": null,
+  "zeroCostFields": [],
+  "costsExample": false,
+  "runSizes": {
+    "A5-naive": 1,
+    "A5-cost2x": 1,
+    "A5-author": 1
+  },
+  "c4Coverage": {
+    "source": "caller",
+    "A": {
+      "from": "2016-01-04",
+      "through": "2018-12-31"
+    },
+    "B": {
+      "from": "2016-01-04",
+      "through": "2018-12-31"
+    }
+  },
+  "variantsTried": 1,
+  "authorUsesIntraMinuteStops": false,
+  "authorCostsMatchBase": true,
+  "checks": {
+    "C2": {
+      "metrics": {
+        "trades": 109,
+        "months": 36,
+        "distinctContractCounts": 1
+      }
+    },
+    "C3": {
+      "metrics": {
+        "maxYearDteMismatchShare": 1,
+        "missingRuleDayShare": 0.014388489208633094
+      }
+    },
+    "C4": {
+      "metrics": {
+        "point": 11.853531746031736,
+        "ciLow": 8.737355999985468,
+        "ciHigh": 15.353976529966221
+      }
+    },
+    "C5": {
+      "metrics": {
+        "plWithoutBest5": 1246.8600000000029,
+        "best10Share": 1.0329858307025905,
+        "positiveYearShare": 0.6666666666666666
+      }
+    },
+    "C6": {
+      "metrics": {
+        "stressPeriodsInRecord": 2,
+        "worstStressLossInAvgMonths": 8.733059246751338
+      }
+    },
+    "C7": {
+      "metrics": {
+        "cost2xPl": 1634.1999999999996,
+        "cost2xKeepShare": 0.5998825343220026
+      }
+    }
+  },
+  "versions": {
+    "tradeblocks": "4.6.2 + #639-#642 + #648, unreleased"
+  },
+  "captureIds": {
+    "author": null,
+    "naive": null,
+    "cost_2x": null
+  },
+  "runFolder": null
+}
