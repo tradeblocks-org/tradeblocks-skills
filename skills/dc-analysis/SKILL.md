@@ -235,7 +235,7 @@ If filters cut more than 50% of trades, the question is: does the P&L per trade 
 
 #### 9g. Curve Fit Verdict
 
-Summarize the findings. If an existing entry rule uses a close-known or unverified field, flag entry validation as failed and do not call the setup robust on the basis of its retrospective results.
+Summarize the findings. If any existing entry rule uses a close-known or unverified field, mark entry validation **FAIL** and report the setup as not validated. Do not apply the PASS tally below, even if every other check passes.
 
 | Check | Result | Flag |
 |-------|--------|------|
