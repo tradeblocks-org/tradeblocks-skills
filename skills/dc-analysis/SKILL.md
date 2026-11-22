@@ -83,9 +83,9 @@ Run `find_predictive_fields` to check if `openingShortLongRatio` correlates with
 - **Mid DTE + mid delta (5/7 at 25Δ):** S/L ratio is the strongest predictor. Sweet spot typically 0.5-0.7.
 - **Long DTE + lower delta (21/28 at 30Δ):** Weak but positive correlation. Some value in minimum threshold.
 
-If correlation > 0.05, run `filter_curve` on `openingSLRatio` to find the optimal entry threshold.
+If the opening ratio correlation is > 0.05 and the ratio passes Step 8's timing check, run `filter_curve` on `openingSLRatio` to explore entry thresholds.
 
-Also check if `closingShortLongRatio` has strong negative correlation (it usually does) — this confirms S/L ratio as a structural health indicator for the trade.
+Also check `closingShortLongRatio` as a retrospective indicator of exit health, not an entry-filter input.
 
 ### Step 5: Structure Fit Analysis
 
@@ -140,20 +140,11 @@ Flag any of these:
 
 ### Step 8: Predictive Fields Deep Dive
 
-From Step 4's `find_predictive_fields` results, surface the top 5 actionable fields beyond the output-derived ones (exclude netPl, plPct, rom, isWinner, maxProfit, maxLoss, etc.).
+Use Step 4's `find_predictive_fields` results. A high rank measures association with P&L, not whether the value was available at entry. Exclude outcome fields such as `netPl`, `plPct`, `rom`, `isWinner`, `maxProfit`, and `maxLoss` from the candidate list.
 
-Actionable fields to look for:
-- `openingShortLongRatio` — entry quality
-- `closingShortLongRatio` — exit health
-- `durationHours` — holding period effect
-- `movement` — underlying movement sensitivity
-- `premium` — entry pricing
-- `openingVix` / `closingVix` — VIX sensitivity
-- `vixChangePct` — VIX direction during trade
-- `gap` — gap sensitivity
-- `numContracts` — position size effect
+**Entry-filter candidates:** Surface up to five fields with `|correlation| > 0.1` whose values could be observed or computed before the entry decision. Consider `openingShortLongRatio`, `openingVix`, and `gap` when the source measurement was already available at that decision. State the source and timing; if either is unknown, keep the field out of the candidate list. Recorded `premium` is entry-pricing context, not evidence that the fill price was knowable before entry. A pre-entry quote is a separate input and must be tested on its own. Use `numContracts` to investigate sizing effects, not as an entry signal.
 
-For any field with |correlation| > 0.1, note it as a potential filter candidate.
+**Retrospective diagnostics:** Report useful associations separately: `closingShortLongRatio` for exit health, `durationHours` for actual holding time, `movement` for realized underlying movement over the trade, `closingVix` for VIX at exit, and `vixChangePct` for the change from entry to exit. Never use these recorded values as entry conditions, regardless of their correlations. If one suggests an entry hypothesis, define a separate signal using only information known before entry and test it independently. Do not transfer the diagnostic's correlation or threshold to that signal.
 
 ### Step 9: Curve Fit Detection
 
@@ -161,7 +152,7 @@ Before making any recommendations, test whether the current setup is robust or o
 
 #### 9a. Entry Filter Validation
 
-If the strategy has a profile with entry filters, run `validate_entry_filters` with the block and strategy name. This is the most direct test of whether filters help or hurt.
+Check existing profile filters against Step 8 before interpreting them. Flag any close-known or unverified filter as ineligible for entry. If the strategy has a profile with entry filters, run `validate_entry_filters` with the block and strategy name. Treat comparisons involving ineligible fields as retrospective only, not as evidence that an entry rule works.
 
 **Tool returns:**
 - Per-filter comparison: entered trades vs filtered-out trades (full stat suite for both groups)
@@ -174,6 +165,8 @@ If the strategy has a profile with entry filters, run `validate_entry_filters` w
 - The ablation study shows which filters interact — some only work in combination
 
 Also run `suggest_filters` to see if there are market-based filters the data suggests but the profile doesn't use. This tool analyzes losing trades and suggests filters that would have improved performance. Pass `strategyName` to cross-reference suggestions against existing profile filters.
+
+Apply the same timing check to `suggest_filters` results before considering them for entry. Sweep only entry-eligible inputs for entry thresholds.
 
 #### 9b. Baseline Sanity Check
 
@@ -272,6 +265,8 @@ Bring it all together. Answer these questions:
    - Adjust exit thresholds?
    - Change position sizing for specific regimes?
    - Consider pausing in certain VIX environments?
+
+Keep retrospective explanations separate from proposed entry changes, including any recommendation to pause in a VIX regime. Use only entry-eligible signals from Steps 8–9 for entry recommendations.
 
 **DO NOT recommend specific threshold values without supporting data.** If S/L ratio correlation is 0.001, don't suggest an S/L ratio filter. Let the data speak.
 

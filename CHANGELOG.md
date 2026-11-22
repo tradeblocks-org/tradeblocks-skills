@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`dc-analysis` checks when a field was knowable before proposing an entry filter.** Closing VIX, VIX change during the trade, and other exit or holding-period fields remain available for retrospective diagnosis.
+
 ## 4.0.2
 
 ### Fixed
