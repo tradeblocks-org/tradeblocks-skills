@@ -83,7 +83,7 @@ Run `find_predictive_fields` to check if `openingShortLongRatio` correlates with
 - **Mid DTE + mid delta (5/7 at 25Δ):** S/L ratio is the strongest predictor. Sweet spot typically 0.5-0.7.
 - **Long DTE + lower delta (21/28 at 30Δ):** Weak but positive correlation. Some value in minimum threshold.
 
-If the opening ratio correlation is > 0.05 and the ratio passes Step 8's timing check, run `filter_curve` on `openingSLRatio` to explore entry thresholds.
+If the opening ratio correlation is > 0.05 and the ratio passes Step 8's timing check, run `filter_curve` on `openingShortLongRatio` to explore entry thresholds.
 
 Also check `closingShortLongRatio` as a retrospective indicator of exit health, not an entry-filter input.
 
@@ -176,11 +176,11 @@ Ask: "Is this strategy only profitable BECAUSE of the filters?" If removing all 
 
 #### 9c. Parameter Sensitivity (Adjacent Value Test)
 
-For each numeric filter or exit threshold in the profile, run `filter_curve` to check if small changes destroy the result:
+Test small changes to numeric entry thresholds with `filter_curve` only for fields that pass Step 8's timing check. Test exit thresholds separately with `batch_exit_analysis`.
 
 | What to test | How | Red flag |
 |-------------|-----|----------|
-| S/L ratio min (if used) | `filter_curve` on `openingSLRatio` | Good at 0.45 but bad at 0.40 and 0.50 |
+| S/L ratio min (if used) | `filter_curve` on `openingShortLongRatio` | Good at 0.45 but bad at 0.40 and 0.50 |
 | VIX filter (if used) | `filter_curve` on `openingVix` | Good at VIX<18 but bad at VIX<17 and VIX<19 |
 | Delta exit threshold | Compare batch_exit_analysis at profile delta vs +/-5 | Good at 70 but bad at 65 and 75 |
 | Profit target % | Compare batch_exit_analysis at profile PT vs +/-10% | Good at 50% but bad at 40% and 60% |
@@ -235,7 +235,7 @@ If filters cut more than 50% of trades, the question is: does the P&L per trade 
 
 #### 9g. Curve Fit Verdict
 
-Summarize the findings:
+Summarize the findings. If an existing entry rule uses a close-known or unverified field, flag entry validation as failed and do not call the setup robust on the basis of its retrospective results.
 
 | Check | Result | Flag |
 |-------|--------|------|
