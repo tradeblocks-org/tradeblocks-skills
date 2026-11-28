@@ -1,0 +1,17 @@
+{
+  "block_id": "triage-v11-a3",
+  "runs": {
+    "author": {
+      "label": "A3-author",
+      "capture_id": "synthetic-A3-author"
+    },
+    "naive": {
+      "label": "A3-naive",
+      "capture_id": "synthetic-A3-naive"
+    },
+    "cost_2x": {
+      "label": "A3-cost2x",
+      "capture_id": "synthetic-A3-cost_2x"
+    }
+  }
+}

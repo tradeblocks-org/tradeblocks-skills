@@ -1,0 +1,19 @@
+{
+  "description": "Cost scenarios for is-this-backtest-lambo-or-lada, in Option Omega's own units. Copy this file, fill every field of every scenario with a number (0 is allowed but is named in the summary, and a slippage of 0 caps C7), and point the local config's costs.file at it. Only the scenario named as costs.base is read; the 2x-slippage run is computed from it. A missing, empty or non-numeric field stops the skill before any run request; nothing is ever filled with 0.",
+  "fields": {
+    "entrySlippage": "entry slippage per exit group (per side for a spread), in option points",
+    "exitSlippage": "slippage of a profit-target or time exit, in option points",
+    "stopLossSlippage": "slippage of a stop exit, in option points",
+    "openingFees": "fee per contract (per leg) to open, USD",
+    "closingFees": "fee per contract (per leg) to close, USD"
+  },
+  "scenarios": {
+    "<base scenario name>": {
+      "entrySlippage": "<number>",
+      "exitSlippage": "<number>",
+      "stopLossSlippage": "<number>",
+      "openingFees": "<number>",
+      "closingFees": "<number>"
+    }
+  }
+}

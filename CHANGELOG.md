@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- **`is-this-backtest-lambo-or-lada` 1.0.0 (new).** Triage of a third-party SPX options strategy from a saved Option Omega backtest or the user's description: **continue**, **reject** or **unclear** from nine fixed checks C1–C9 (in order: fidelity to the source, sample, expiry calendar, the gate against the naive version, top days, stress windows, 2x slippage, start date, stop neighbours), on the user's own base costs, with every threshold in `thresholds.json`.
+- The checks are computed by scripts, not by the model: `scripts/triage-config.mjs` checks the local config; `scripts/triage-run-request.mjs` writes the rule sheet's runs (`run-request.json`, one Option Omega settings file per run, the strategy as built); `scripts/triage-verdict.mjs` computes C1, the C2 months and the C5–C9 metrics from the TradeBlocks numbers, applies the thresholds, appends one verdict-log line and writes the summary.
+- The skill runs the backtests through the official Option Omega MCP connector after the user's ok, captures them with `oo-capture` and imports them into one block; it ships no costs of its own, only a labelled example scenario used after the user confirms it. Requires the TradeBlocks release with tradeblocks-org/tradeblocks#640, #641 and #642 (#640 includes the former #639 and #648); until then the matching checks are reported as not run.
+
 ### Fixed
 
 - **`dc-analysis` checks when a field was knowable before proposing an entry filter.** Closing VIX, VIX change during the trade, and other exit or holding-period fields remain available for retrospective diagnosis.

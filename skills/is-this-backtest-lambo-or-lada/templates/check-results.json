@@ -1,0 +1,20 @@
+{
+  "case": "<short name of this triage>",
+  "runAt": "<ISO time of this run>",
+  "runSizes": { "<label>": { "n": "<distinct contract counts of that run (step 4)>", "contracts": "<its contract count>", "entries": "<its distinct open date and time>" } },
+  "exitMix": { "author": { "<reason_for_close>": "<count>" }, "authorBase": { "<reason_for_close>": "<count>" } },
+  "c4Coverage": { "source": "<coverageSource from paired_bootstrap_comparison>" },
+  "netPl": { "<role>": "<get_statistics stats.netPl of that run (step 4)>" },
+  "checks": {
+    "C2": { "entries": "<runSizes entries of the realistic run>", "firstPeriod": "<YYYY-MM>", "lastPeriod": "<YYYY-MM>" },
+    "C3": { "metrics": { "maxYearDteMismatchShare": "<number>", "missingRuleDayShare": "<number, or null plus notRunReason>" }, "missingRuleDaysRun": "<run-request.json c3MissingDaysRun>" },
+    "C4": { "metrics": { "point": "<number>", "ciLow": "<number>", "ciHigh": "<number>" } },
+    "C5": { "plWithoutBest5": "<number>", "best10ShareOfTotal": "<number or null, as returned>", "positiveYearShare": "<number>" },
+    "C6": { "windowNetPl": [{ "name": "<stress_test name>", "start": "<YYYY-MM-DD>", "end": "<YYYY-MM-DD>", "netPl": "<get_statistics netPl of the window>" }] },
+    "C8": { "starts": [{ "startDate": "<the c8Sql rows unchanged: each date of run-request.json c8Starts, in order>", "netPl": "<number>" }] },
+    "<a check that could not run>": { "notRun": "<reason>" }
+  },
+  "versions": { "tradeblocks": "<server version, when TradeBlocks reports it>", "optionomega": "<when known>" },
+  "runFolder": "<this run folder>",
+  "_notes": "C7, C8 (full record) and C9 use netPl (only a notRun goes here). Drop exitMix without author_base and every optional field you do not have. Not written here: block, runs and capture ids (the verdict script reads plugin-result.json), source, rule sheet and variants (rule-sheet.json) and flags, costs and the date range (run-request.json), all in the same folder."
+}

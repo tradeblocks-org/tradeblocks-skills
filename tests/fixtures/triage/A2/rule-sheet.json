@@ -1,0 +1,62 @@
+{
+  "source": null,
+  "rule_sheet": {
+    "underlying": {
+      "value": "SPX",
+      "status": "n/a"
+    },
+    "structure": {
+      "value": "put credit spread",
+      "status": "n/a"
+    },
+    "legs": {
+      "value": "short put, 50 wide",
+      "status": "n/a"
+    },
+    "dte": {
+      "value": 7,
+      "status": "n/a"
+    },
+    "entry_time": {
+      "value": "09:35",
+      "status": "n/a"
+    },
+    "stop": {
+      "value": "none",
+      "status": "n/a"
+    },
+    "stop_mode": {
+      "value": "n/a",
+      "status": "n/a"
+    },
+    "exit": {
+      "value": "hold to expiry",
+      "status": "n/a"
+    },
+    "entry_filters": {
+      "value": "none",
+      "status": "n/a"
+    },
+    "days_traded": {
+      "value": "Monday",
+      "status": "n/a"
+    },
+    "reentry": {
+      "value": "none",
+      "status": "n/a"
+    },
+    "sizing": {
+      "value": "1 lot",
+      "status": "n/a"
+    },
+    "fills": {
+      "value": "synthetic",
+      "status": "n/a"
+    },
+    "date_range": {
+      "value": "2022-06-06 to 2025-12-29",
+      "status": "n/a"
+    }
+  },
+  "variants_tried": 1
+}

@@ -1,0 +1,81 @@
+{
+  "source": {
+    "ref": "<channel · title · date, or file name>",
+    "built_from": "<description (you wrote the settings from it) or saved backtest>",
+    "description": "<the source text or transcript excerpt the rule sheet is checked against; remove the whole source object when there is none>"
+  },
+  "rule_sheet": {
+    "underlying": {
+      "value": "SPX",
+      "status": "stated",
+      "quote": "<the source's words for this field, copied literally>"
+    },
+    "structure": {
+      "value": "<e.g. put credit spread>",
+      "status": "stated",
+      "quote": "<the source's words for this field, copied literally>"
+    },
+    "legs": {
+      "value": "<delta or offset, width>",
+      "status": "stated",
+      "quote": "<the source's words for this field, copied literally>"
+    },
+    "dte": {
+      "value": 0,
+      "status": "stated",
+      "quote": "<the source's words for this field, copied literally>"
+    },
+    "entry_time": {
+      "value": "<HH:mm>",
+      "status": "stated",
+      "quote": "<the source's words for this field, copied literally>"
+    },
+    "stop": {
+      "value": "<type, value>",
+      "status": "assumed",
+      "quote": "<the source's words for this field, copied literally>"
+    },
+    "stop_mode": {
+      "value": "<intra-minute or minute>",
+      "status": "assumed",
+      "quote": "<the source's words for this field, copied literally>"
+    },
+    "exit": {
+      "value": "<profit target or time exit>",
+      "status": "stated",
+      "quote": "<the source's words for this field, copied literally>"
+    },
+    "entry_filters": {
+      "value": "none",
+      "status": "stated",
+      "quote": "<the source's words for this field, copied literally>"
+    },
+    "days_traded": {
+      "value": "<weekdays>",
+      "status": "stated",
+      "quote": "<the source's words for this field, copied literally>"
+    },
+    "reentry": {
+      "value": "none",
+      "status": "n/a",
+      "quote": "<the source's words for this field, copied literally>"
+    },
+    "sizing": {
+      "value": "<fixed size>",
+      "status": "stated",
+      "quote": "<the source's words for this field, copied literally>"
+    },
+    "fills": {
+      "value": "<slippage assumption>",
+      "status": "assumed",
+      "quote": "<the source's words for this field, copied literally>"
+    },
+    "date_range": {
+      "value": "<author's record>",
+      "status": "stated",
+      "quote": "<the source's words for this field, copied literally>"
+    }
+  },
+  "variants_tried": 1,
+  "_notes": "Written by you in steps 1-2 into the run folder as rule-sheet.json. built_from: \"description\" makes the run request check that every core field is stated, each with a quote found literally in the description (else NOT_BUILDABLE); quote: for an assumed field, the source's vague words, or \"\" when the source never mentions the field. stop_mode: \"minute\" with status stated only when the source says the author runs without intra-minute stops (the run request then keeps the author run on minute stops; for a saved backtest its own setting decides); n/a when there is no stop or Option Omega offers no intra-minute stops (not SPX/SPY at 0 DTE). variants_tried: how many variants the author says were tried (logged only)."
+}
