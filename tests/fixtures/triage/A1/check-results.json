@@ -1,0 +1,103 @@
+{
+  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2 + #639-#642 + #648, unreleased and read with the TradeBlocks calls in SKILL.md (maintainer tool, not shipped). Raw form (round 65): C2 first/last period and C6 window net P&L re-read from the same TradeBlocks block; every other number unchanged. Round 70: C2 entries (distinct open date and time, equal to the trade count in every case) and the C6 windows' name and dates (stress_test) re-read from the same block; values unchanged.",
+  "case": "A1",
+  "runAt": "2026-11-19T00:00:00Z",
+  "runSizes": {
+    "A1-cost2x": {
+      "n": 1,
+      "contracts": 1
+    },
+    "A1-d30-s300": {
+      "n": 1,
+      "contracts": 1
+    },
+    "A1-naive": {
+      "n": 1,
+      "contracts": 1
+    },
+    "A1-stop-tight": {
+      "n": 1,
+      "contracts": 1
+    },
+    "A1-stop-wide": {
+      "n": 1,
+      "contracts": 1
+    }
+  },
+  "c4Coverage": {
+    "source": "caller"
+  },
+  "netPl": {
+    "author": 139.0100000000004,
+    "cost_2x": -1520.9899999999984,
+    "stop_tight": -1827.4799999999996,
+    "stop_wide": -3801.249999999998
+  },
+  "checks": {
+    "C2": {
+      "entries": 166,
+      "firstPeriod": "2022-06",
+      "lastPeriod": "2025-12"
+    },
+    "C3": {
+      "metrics": {
+        "maxYearDteMismatchShare": 0,
+        "missingRuleDayShare": 0
+      }
+    },
+    "C4": {
+      "metrics": {
+        "point": 3.1493428258488607,
+        "ciLow": -1.9093245345016288,
+        "ciHigh": 8.023587039065346
+      }
+    },
+    "C5": {
+      "plWithoutBest5": -1058.2899999999995,
+      "best10ShareOfTotal": 16.871735846341945,
+      "positiveYearShare": 0.5
+    },
+    "C6": {
+      "windowNetPl": [
+        {
+          "name": "bear_2022",
+          "start": "2022-01-03",
+          "end": "2022-10-12",
+          "netPl": 1831.38
+        },
+        {
+          "name": "vix_aug_2024",
+          "start": "2024-08-01",
+          "end": "2024-08-15",
+          "netPl": -1049.26
+        },
+        {
+          "name": "liberation_day",
+          "start": "2025-04-02",
+          "end": "2025-04-08",
+          "netPl": 153.68
+        }
+      ]
+    },
+    "C8": {
+      "starts": [
+        {
+          "startDate": "2022-12-06",
+          "netPl": -1633.6799999999976
+        },
+        {
+          "startDate": "2023-06-06",
+          "netPl": -1190.7799999999984
+        },
+        {
+          "startDate": "2023-12-06",
+          "netPl": -568.1599999999987
+        }
+      ]
+    }
+  },
+  "versions": {
+    "tradeblocks": "4.6.2 + #639-#642 + #648, unreleased"
+  },
+  "runFolder": null
+}

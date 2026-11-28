@@ -1,0 +1,65 @@
+{
+  "source": {
+    "ref": "Synthetic case A5",
+    "description": "Synthetic source for case A5: sell a 7 DTE SPX put spread every Monday at 09:35, skip filter-off days, hold to expiry."
+  },
+  "rule_sheet": {
+    "underlying": {
+      "value": "SPX",
+      "status": "stated"
+    },
+    "structure": {
+      "value": "put credit spread",
+      "status": "stated"
+    },
+    "legs": {
+      "value": "short 20 delta, 50 wide",
+      "status": "stated"
+    },
+    "dte": {
+      "value": 7,
+      "status": "stated"
+    },
+    "entry_time": {
+      "value": "09:35",
+      "status": "stated"
+    },
+    "stop": {
+      "value": "none",
+      "status": "stated"
+    },
+    "stop_mode": {
+      "value": "n/a",
+      "status": "n/a"
+    },
+    "exit": {
+      "value": "hold to expiry",
+      "status": "stated"
+    },
+    "entry_filters": {
+      "value": "skip filter-off days",
+      "status": "stated"
+    },
+    "days_traded": {
+      "value": "Monday",
+      "status": "stated"
+    },
+    "reentry": {
+      "value": "none",
+      "status": "stated"
+    },
+    "sizing": {
+      "value": "1 lot",
+      "status": "stated"
+    },
+    "fills": {
+      "value": "OO default",
+      "status": "assumed"
+    },
+    "date_range": {
+      "value": "2016-01 to 2018-12",
+      "status": "stated"
+    }
+  },
+  "variants_tried": 1
+}

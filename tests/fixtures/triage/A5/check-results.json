@@ -1,0 +1,79 @@
+{
+  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2 + #639-#642 + #648, unreleased and read with the TradeBlocks calls in SKILL.md (maintainer tool, not shipped). Raw form (round 65): C2 first/last period and C6 window net P&L re-read from the same TradeBlocks block; every other number unchanged. Round 70: C2 entries (distinct open date and time, equal to the trade count in every case) and the C6 windows' name and dates (stress_test) re-read from the same block; values unchanged.",
+  "case": "A5",
+  "runAt": "2026-11-19T00:00:00Z",
+  "runSizes": {
+    "A5-author": {
+      "n": 1,
+      "contracts": 1
+    },
+    "A5-cost2x": {
+      "n": 1,
+      "contracts": 1
+    },
+    "A5-naive": {
+      "n": 1,
+      "contracts": 1
+    }
+  },
+  "c4Coverage": {
+    "source": "caller"
+  },
+  "netPl": {
+    "author": 2724.2000000000003,
+    "cost_2x": 1634.1999999999996
+  },
+  "checks": {
+    "C2": {
+      "entries": 109,
+      "firstPeriod": "2016-01",
+      "lastPeriod": "2018-12"
+    },
+    "C3": {
+      "metrics": {
+        "maxYearDteMismatchShare": 1,
+        "missingRuleDayShare": 0.014388489208633094
+      }
+    },
+    "C4": {
+      "metrics": {
+        "point": 11.853531746031736,
+        "ciLow": 8.737355999985468,
+        "ciHigh": 15.353976529966221
+      }
+    },
+    "C5": {
+      "plWithoutBest5": 1246.8600000000029,
+      "best10ShareOfTotal": 1.0329858307025905,
+      "positiveYearShare": 0.6666666666666666
+    },
+    "C6": {
+      "windowNetPl": [
+        {
+          "name": "brexit",
+          "start": "2016-06-23",
+          "end": "2016-06-27",
+          "netPl": -271.96
+        },
+        {
+          "name": "q4_2018",
+          "start": "2018-10-01",
+          "end": "2018-12-24",
+          "netPl": -660.85
+        }
+      ]
+    },
+    "C8": {
+      "starts": [
+        {
+          "startDate": "2016-07-04",
+          "netPl": 2194.9700000000007
+        }
+      ]
+    }
+  },
+  "versions": {
+    "tradeblocks": "4.6.2 + #639-#642 + #648, unreleased"
+  },
+  "runFolder": null
+}

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Fail when a tracked Markdown file links to a repository file that does not exist.
 // Checks inline links and images, `[text](target)`; external URLs and in-page anchors are skipped.
+// Also checks repository paths written as code, e.g. `skills/x/references/y.md` (from the repo root).
 // Destinations follow CommonMark: `<...>` or balanced/backslash-escaped parentheses, with an
 // optional title; `?query` and `#fragment` are not part of the file path.
 import { execFileSync } from "node:child_process";
@@ -15,6 +16,7 @@ const opener = /\[[^\]]*\]\(/g;
 const external = /^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i;
 const titleClose = { '"': '"', "'": "'", "(": ")" };
 const missing = [];
+const repoPath = /^(?:skills|scripts|tests)\/[\w./-]+\.(?:md|mjs|json)$/;
 
 // Parse an inline link from `i`, just after `](`. Returns the raw destination and the index past
 // the link's closing `)`, or null when the text there is not a link.
@@ -67,6 +69,8 @@ for (const file of files) {
       fence = open[1];
       return;
     }
+    for (const [, code] of line.matchAll(/`([^`]+)`/g))
+      if (repoPath.test(code) && !existsSync(code)) missing.push(`${file}:${i + 1}: \`${code}\``);
     const text = line.replace(/`[^`]*`/g, "");
     opener.lastIndex = 0;
     while (opener.exec(text)) {

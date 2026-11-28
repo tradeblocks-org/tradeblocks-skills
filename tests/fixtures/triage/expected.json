@@ -1,0 +1,105 @@
+{
+  "_source": "Expected outcomes of the synthetic calibration cases (from the private fixture generator); C8/C9 added for V1.1 (A2 and A5 stop before step 6, so C8/C9 are not counted there).",
+  "A1": {
+    "verdict": [
+      "reject",
+      "unclear"
+    ],
+    "checks": {
+      "C1": "pass",
+      "C2": "pass",
+      "C3": "pass",
+      "C4": "cap",
+      "C5": "reject",
+      "C6": "reject",
+      "C7": "reject",
+      "C8": "cap",
+      "C9": "reject"
+    }
+  },
+  "A2": {
+    "verdict": [
+      "reject"
+    ],
+    "checks": {
+      "C1": "pass",
+      "C2": "cap",
+      "C3": "pass",
+      "C4": "reject"
+    }
+  },
+  "A3": {
+    "verdict": [
+      "continue"
+    ],
+    "checks": {
+      "C1": "pass",
+      "C2": "pass",
+      "C3": "pass",
+      "C4": "pass",
+      "C5": "pass",
+      "C6": "pass",
+      "C7": "pass",
+      "C8": "pass",
+      "C9": "pass"
+    }
+  },
+  "A4": {
+    "verdict": [
+      "unclear"
+    ],
+    "checks": {
+      "C1": "cap",
+      "C2": "pass",
+      "C3": "pass",
+      "C4": "pass",
+      "C5": "pass",
+      "C6": "pass",
+      "C7": "pass",
+      "C8": "pass",
+      "C9": "pass"
+    }
+  },
+  "A5": {
+    "verdict": [
+      "unclear"
+    ],
+    "checks": {
+      "C1": "pass",
+      "C2": "pass",
+      "C3": "cap"
+    }
+  },
+  "A8": {
+    "verdict": [
+      "unclear"
+    ],
+    "checks": {
+      "C1": "pass",
+      "C2": "pass",
+      "C3": "pass",
+      "C4": "pass",
+      "C5": "pass",
+      "C6": "pass",
+      "C7": "pass",
+      "C8": "cap",
+      "C9": "pass"
+    }
+  },
+  "A9": {
+    "verdict": [
+      "reject"
+    ],
+    "checks": {
+      "C1": "pass",
+      "C2": "pass",
+      "C3": "pass",
+      "C4": "pass",
+      "C5": "pass",
+      "C6": "pass",
+      "C7": "pass",
+      "C8": "pass",
+      "C9": "reject"
+    }
+  }
+}

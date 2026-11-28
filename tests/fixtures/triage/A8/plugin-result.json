@@ -1,0 +1,17 @@
+{
+  "block_id": "triage-v11-a8",
+  "runs": {
+    "author": {
+      "label": "A8-author",
+      "capture_id": "synthetic-A8-author"
+    },
+    "naive": {
+      "label": "A8-naive",
+      "capture_id": "synthetic-A8-naive"
+    },
+    "cost_2x": {
+      "label": "A8-cost2x",
+      "capture_id": "synthetic-A8-cost_2x"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "block_id": "triage-v11-a1",
+  "runs": {
+    "author": {
+      "label": "A1-d30-s300",
+      "capture_id": "synthetic-A1-author"
+    },
+    "naive": {
+      "label": "A1-naive",
+      "capture_id": "synthetic-A1-naive"
+    },
+    "cost_2x": {
+      "label": "A1-cost2x",
+      "capture_id": "synthetic-A1-cost_2x"
+    },
+    "stop_tight": {
+      "label": "A1-stop-tight",
+      "capture_id": "synthetic-A1-stop_tight"
+    },
+    "stop_wide": {
+      "label": "A1-stop-wide",
+      "capture_id": "synthetic-A1-stop_wide"
+    }
+  }
+}

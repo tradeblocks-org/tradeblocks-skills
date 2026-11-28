@@ -1,0 +1,60 @@
+{
+  "_source": "Run request of this synthetic case in the shape triage-run-request.mjs writes, with synthetic costs; runs list role and label only (the verdict checks the labels in plugin-result.json against them).",
+  "flags": {
+    "author_costs_match_base": true,
+    "author_without_intra_minute": false,
+    "author_has_stop": false
+  },
+  "baseScenario": "synthetic",
+  "cost2xName": "synthetic x2 slippage",
+  "costsExample": false,
+  "costs": {
+    "base": {
+      "entrySlippage": 0.1,
+      "exitSlippage": 0.1,
+      "stopLossSlippage": 0.1,
+      "openingFees": 1,
+      "closingFees": 1
+    },
+    "cost2x": {
+      "entrySlippage": 0.2,
+      "exitSlippage": 0.2,
+      "stopLossSlippage": 0.2,
+      "openingFees": 1,
+      "closingFees": 1
+    }
+  },
+  "zeroCostFields": [],
+  "range": {
+    "from": "2022-06-06",
+    "through": "2025-12-29"
+  },
+  "c8Starts": [
+    "2022-12-06",
+    "2023-06-06",
+    "2023-12-06"
+  ],
+  "returnBasis": {
+    "startingFunds": 100000,
+    "allocationPercentage": 0,
+    "maxContractsPerTrade": 1,
+    "ignoreMarginRequirements": true
+  },
+  "runs": [
+    {
+      "role": "author",
+      "label": "A2-author",
+      "from": "author"
+    },
+    {
+      "role": "naive",
+      "label": "A2-naive",
+      "from": "author"
+    },
+    {
+      "role": "cost_2x",
+      "label": "A2-cost2x",
+      "from": "author"
+    }
+  ]
+}

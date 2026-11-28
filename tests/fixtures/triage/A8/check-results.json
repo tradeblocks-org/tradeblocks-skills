@@ -1,0 +1,93 @@
+{
+  "_source": "Frozen check results: the synthetic trade log of this case imported into TradeBlocks 4.6.2 + #639-#642 + #648, unreleased and read with the TradeBlocks calls in SKILL.md (maintainer tool, not shipped). Raw form (round 65): C2 first/last period and C6 window net P&L re-read from the same TradeBlocks block; every other number unchanged. Round 70: C2 entries (distinct open date and time, equal to the trade count in every case) and the C6 windows' name and dates (stress_test) re-read from the same block; values unchanged.",
+  "case": "A8",
+  "runAt": "2026-11-19T00:00:00Z",
+  "runSizes": {
+    "A8-author": {
+      "n": 1,
+      "contracts": 1
+    },
+    "A8-cost2x": {
+      "n": 1,
+      "contracts": 1
+    },
+    "A8-naive": {
+      "n": 1,
+      "contracts": 1
+    }
+  },
+  "c4Coverage": {
+    "source": "caller"
+  },
+  "netPl": {
+    "author": 4941.520000000001,
+    "cost_2x": 3631.5199999999995
+  },
+  "checks": {
+    "C2": {
+      "entries": 131,
+      "firstPeriod": "2022-06",
+      "lastPeriod": "2025-12"
+    },
+    "C3": {
+      "metrics": {
+        "maxYearDteMismatchShare": 0,
+        "missingRuleDayShare": 0
+      }
+    },
+    "C4": {
+      "metrics": {
+        "point": 12.217327491785314,
+        "ciLow": 9.106384419496166,
+        "ciHigh": 15.56117571193866
+      }
+    },
+    "C5": {
+      "plWithoutBest5": 4020.340000000001,
+      "best10ShareOfTotal": 0.3566433000372354,
+      "positiveYearShare": 0.75
+    },
+    "C6": {
+      "windowNetPl": [
+        {
+          "name": "bear_2022",
+          "start": "2022-01-03",
+          "end": "2022-10-12",
+          "netPl": 1407.48
+        },
+        {
+          "name": "svb_crisis",
+          "start": "2023-03-08",
+          "end": "2023-03-15",
+          "netPl": 165.19
+        },
+        {
+          "name": "vix_aug_2024",
+          "start": "2024-08-01",
+          "end": "2024-08-15",
+          "netPl": -417.65
+        }
+      ]
+    },
+    "C8": {
+      "starts": [
+        {
+          "startDate": "2022-12-06",
+          "netPl": 2567.5600000000004
+        },
+        {
+          "startDate": "2023-06-06",
+          "netPl": 98.37999999999965
+        },
+        {
+          "startDate": "2023-12-06",
+          "netPl": -394.99000000000046
+        }
+      ]
+    }
+  },
+  "versions": {
+    "tradeblocks": "4.6.2 + #639-#642 + #648, unreleased"
+  },
+  "runFolder": null
+}

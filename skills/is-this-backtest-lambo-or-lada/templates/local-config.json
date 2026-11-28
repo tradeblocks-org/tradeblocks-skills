@@ -1,0 +1,12 @@
+{
+  "description": "Local config of is-this-backtest-lambo-or-lada. Copy this file to the default location ($XDG_CONFIG_HOME or ~/.config, then tradeblocks-skills/is-this-backtest-lambo-or-lada/local-config.json; TRIAGE_CONFIG overrides it), keep it outside the skill and fill it in; scripts/triage-config.mjs names what is still missing. No value here ships with the skill.",
+  "costs": {
+    "file": "<path to your cost file in the format of templates/costs.json (Option Omega units)>",
+    "command": null,
+    "_commandExample": ["python3", "my_costs.py"],
+    "base": "<name of the base scenario>"
+  },
+  "verdictLog": "verdicts.jsonl",
+  "runRoot": "runs",
+  "notes": "Relative paths resolve against this file's folder (after following a symlink); commands run in that folder. costs: give either file or command (argv array that prints the same JSON, e.g. a converter from your own cost file); base: the scenario the checks run at. costs.example: only after you confirmed the shipped example: {\"confirmedAt\": <ISO time>} with base \"example\" and file and command null."
+}

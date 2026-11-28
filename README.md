@@ -21,6 +21,7 @@ Guided workflows that chain TradeBlocks MCP tools together for common analysis t
 | `market-data` | Market data setup — fetch daily and intraday bars, VIX context, and option quotes, or import minute bars from CSV or DuckDB |
 | `oo-capture` | Capture a saved OO backtest, saved portfolio or run as one verified TradeBlocks block with its marked daily curve (whole-book for a portfolio) |
 | `is-this-optimum-real` | Test an OO optimizer winner against a stable-region centre using separately verified scratch runs and a paired TradeBlocks comparison |
+| `is-this-backtest-lambo-or-lada` | Triage a third-party SPX options backtest: continue, reject or unclear from nine fixed checks (baseline vs. naive version, top days, stress, 2x slippage, start date, stop neighbours, sample, expiry calendar, fidelity to the source) and a thresholds file |
 
 ## Install
 
@@ -89,6 +90,12 @@ Option Omega CSV --> import_csv --> DuckDB --> Tools --> Skills --> Analysis
                               Market data (daily/intraday)
                               via fetch_bars / fetch_quotes / import_market_csv
 ```
+
+## Triage fixtures
+
+The triage skill's calibration cases are frozen check results in `tests/fixtures/triage/<case>/check-results.json`, read from TradeBlocks on synthetic trade logs; their expected outcomes are in `tests/fixtures/triage/expected.json`. `npm test` checks every case's verdict and that a rerun is byte-identical. The trade-log generator and the collector are maintainer tools and are not part of this repository.
+
+The example cost scenario (`skills/is-this-backtest-lambo-or-lada/templates/costs-example.json`) is the skill author's researched SPX scenario with a source label and a date. It changes rarely; update its values and date in one commit.
 
 ## Links
 

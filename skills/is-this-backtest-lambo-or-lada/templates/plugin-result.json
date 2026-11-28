@@ -1,0 +1,22 @@
+{
+  "block_id": "<TradeBlocks block id holding every run of this triage>",
+  "runs": {
+    "author": {
+      "label": "<Strategy label of the author run in the block>",
+      "capture_id": "<oo-capture capture id>"
+    },
+    "author_base": {
+      "label": "<Strategy label of the author_base run in the block (only when the run request lists it)>",
+      "capture_id": "<oo-capture capture id>"
+    },
+    "naive": {
+      "label": "<Strategy label of the naive run in the block>",
+      "capture_id": "<oo-capture capture id>"
+    },
+    "cost_2x": {
+      "label": "<Strategy label of the cost_2x run in the block>",
+      "capture_id": "<oo-capture capture id>"
+    }
+  },
+  "_notes": "Written into the run folder by the agent after importing the captured runs into one block (references/runs.md); never by hand. One entry per role that ran (author always; author_base only when the run request lists it); each label equals the run's label in run-request.json and its Strategy label in the block; every run has its capture id. The verdict script reads this file."
+}
